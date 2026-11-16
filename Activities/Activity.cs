@@ -19,6 +19,8 @@ namespace DynamicIsland
         public DateTime? ExpiresAt;
         public bool Finished;
         public IslandWindow Host;
+        /// <summary>Art des Hinweises für die Prioritätsliste (z. B. „message“, „claude“); leer = aus der Id ermittelt.</summary>
+        public string Category;
 
         public virtual bool CanExpand => true;
         public virtual double CompactWidth => 250;
@@ -90,8 +92,9 @@ namespace DynamicIsland
         SolidColorBrush brushCache;
 
         public override bool CanExpand => Expandable;
-        public override double CompactWidth => Banner ? Math.Max(CompactW, 350) : CompactW;
-        public override double CompactHeight => Banner ? 70 : 36;
+        // Banner (Nachrichten, Geräte …): bei „klein“ flacher und schmaler
+        public override double CompactWidth => Banner ? (Ui.CompactAlerts ? Math.Min(Math.Max(CompactW, 300), 360) : Math.Max(CompactW, 350)) : CompactW;
+        public override double CompactHeight => Banner ? (Ui.CompactAlerts ? 50 : 70) : 36;
 
         public override Size ExpandedSize
         {
@@ -152,15 +155,17 @@ namespace DynamicIsland
         {
             bCircle = new Border
             {
-                Width = 42, Height = 42,
-                CornerRadius = new CornerRadius(21),
+                Width = Ui.CompactAlerts ? 32 : 42, Height = Ui.CompactAlerts ? 32 : 42,
+                CornerRadius = new CornerRadius(Ui.CompactAlerts ? 16 : 21),
                 Background = Ui.Br(Accent, 55),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            cIcon = Ui.Glyph(Glyph, 19, Acc(), GlyphFont);
+            cIcon = Ui.Glyph(Glyph, Ui.CompactAlerts ? 15 : 19, Acc(), GlyphFont);
             bCircle.Child = cIcon;
-            bTitle = Ui.Text(Title, 14.5, Ui.White);
-            bSub = Ui.Text(Subtitle, 12, Ui.Dim, false);
+            bTitle = Ui.Text(Title, Ui.CompactAlerts ? 13.5 : 14.5, Ui.White);
+            bTitle.TextTrimming = TextTrimming.CharacterEllipsis;
+            bSub = Ui.Text(Subtitle, Ui.CompactAlerts ? 11.5 : 12, Ui.Dim, false);
+            bSub.TextTrimming = TextTrimming.CharacterEllipsis;
             var texts = Ui.VStack(1, bTitle, bSub);
             if (Progress.HasValue)
             {
@@ -169,10 +174,10 @@ namespace DynamicIsland
             }
             texts.Margin = new Thickness(11, 0, 8, 0);
             UIElement right;
-            if (Buttons.Count > 0) right = ButtonsPanel(38);
+            if (Buttons.Count > 0) right = ButtonsPanel(Ui.CompactAlerts ? 30 : 38);
             else if (RightFactory != null) right = RightFactory();
             else { cRight = Ui.Text(RightText, 15, Ui.Br(RightColor ?? Accent), true, true); right = cRight; }
-            var g = Ui.Row3(bCircle, texts, right, new Thickness(14, 0, 16, 0));
+            var g = Ui.Row3(bCircle, texts, right, Ui.CompactAlerts ? new Thickness(9, 0, 12, 0) : new Thickness(14, 0, 16, 0));
             Refresh();
             return g;
         }

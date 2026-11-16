@@ -43,6 +43,20 @@ namespace DynamicIsland
         public List<string> AnimEvents { get; set; } = new List<string> { "claude", "timer", "download", "copy" };
         /// <summary>Animation pro Ereignis: off, app (Island wird länger: App-Symbol + Inhalt), glow, bounce, both.</summary>
         public Dictionary<string, string> AnimModes { get; set; }
+        /// <summary>Licht-Effekt bei „Licht“: ring (Rahmen pulsiert), orbit (Licht läuft einmal um die Island), halo (weicher Schein), shine (Glanz zieht durch).</summary>
+        public string GlowStyle { get; set; } = "orbit";
+        /// <summary>Licht-Effekt pro Ereignis (leer/fehlt = der allgemeine GlowStyle).</summary>
+        public Dictionary<string, string> GlowStyles { get; set; } = new Dictionary<string, string>();
+        /// <summary>Größe der Hinweise in der Island: small (klein und schlicht) oder normal.</summary>
+        public string AlertSize { get; set; } = "small";
+        /// <summary>Wie Hinweise erscheinen: slide (sanft hineinschieben), morph (Apple-Tropfen mit Federn), none (ohne).</summary>
+        public string AlertMotion { get; set; } = "slide";
+        /// <summary>Reihenfolge, wenn mehrere Hinweise gleichzeitig kommen (oben = zuerst; höhere Priorität unterbricht).</summary>
+        public List<string> AlertPriority { get; set; } = new List<string> { "call", "message", "claude", "reminder", "timer", "download", "device", "copy", "other" };
+        /// <summary>Zuletzt gewählte Timer-Dauer in Sekunden.</summary>
+        public int LastTimerSeconds { get; set; } = 300;
+        /// <summary>Eigene Farbe pro Ereignis (Hex, leer = Standardfarbe).</summary>
+        public Dictionary<string, string> AnimColors { get; set; } = new Dictionary<string, string>();
         public int LayoutVersion { get; set; }
         /// <summary>Bedienelemente: "glass" = Apple Liquid Glass, "flat" = flach.</summary>
         public string Material { get; set; } = "glass";

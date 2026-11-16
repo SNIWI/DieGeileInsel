@@ -52,7 +52,7 @@ namespace DynamicIsland
                 case "UserPromptSubmit":
                     act = Ensure(sid, cwd, act);
                     act.StartTask(Str(j, "prompt"));
-                    host.Nudge();
+                    host.Relayout();   // nicht hervorholen – nur der Kreis erscheint
                     break;
 
                 case "PreToolUse":
@@ -62,7 +62,7 @@ namespace DynamicIsland
                     act = Ensure(sid, cwd, act);
                     bool wasIdle = act.State != ClaudeState.Working;
                     act.ToolStarted(Describe(Str(j, "tool_name"), j["tool_input"]));
-                    if (wasIdle) host.Nudge();
+                    if (wasIdle) host.Relayout();
                     break;
 
                 case "PostToolUse":
@@ -93,7 +93,7 @@ namespace DynamicIsland
                 }
 
                 case "Stop":
-                    if (act != null && act.State != ClaudeState.Done) { act.Done(); host.Nudge(); host.ClaudeFinished(act); }
+                    if (act != null && act.State != ClaudeState.Done) { act.Done(); host.Relayout(); host.ClaudeFinished(act); }
                     break;
 
                 case "SessionEnd":
@@ -327,7 +327,9 @@ namespace DynamicIsland
         System.Windows.Media.RotateTransform arcSpin;
         ClaudeState bubbleState = (ClaudeState)(-1);
 
-        Color StateColor => State == ClaudeState.Working ? ClaudeTracker.Orange : State == ClaudeState.Waiting ? Ui.Yellow : Ui.Green;
+        /// <summary>Farbe für „fertig“ – die bei „Claude ist fertig“ eingestellte Farbe (setzt die Island).</summary>
+        public static Func<Color> DoneColor = () => Ui.Green;
+        Color StateColor => State == ClaudeState.Working ? ClaudeTracker.Orange : State == ClaudeState.Waiting ? Ui.Yellow : DoneColor();
 
         public override FrameworkElement BuildMinimal()
         {
@@ -503,7 +505,7 @@ namespace DynamicIsland
                     Glyph = "!";
                     break;
                 default:
-                    Accent = Ui.Green;
+                    Accent = DoneColor();
                     Glyph = "✓";
                     break;
             }

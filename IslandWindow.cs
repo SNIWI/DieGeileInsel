@@ -156,6 +156,7 @@ namespace DynamicIsland
             Calendar = new CalendarService(Settings);
             Todo = new TodoService(Settings);
             Claude = new ClaudeTracker(this);
+            ClaudeActivity.DoneColor = () => EventColor("claude", Logos.ClaudeOrange);   // „fertig“ in der eingestellten Farbe statt Grün
             Weather = new WeatherService(Settings);
             Discord = new DiscordService(Settings);
             Spotify = new SpotifyService(Settings);
@@ -164,6 +165,8 @@ namespace DynamicIsland
             dashboard = new DashboardActivity(this) { Host = this };
             LiquidGlass.Configure(Settings.Material != "flat", Settings.GlassTint);
             Ui.Accent = Ui.ParseColor(Settings.AccentColor, Ui.Blue);
+            Ui.CompactAlerts = Settings.AlertSize != "normal";   // Hinweise klein und schlicht
+            Ui.AlertMotion = Settings.AlertMotion ?? "slide";
             Ui.SpotifyAccent = Ui.ParseColor(Settings.SpotifyColor, Color.FromRgb(0x1E, 0xD7, 0x60));
             BuildVisuals();
 
@@ -425,6 +428,7 @@ namespace DynamicIsland
                 if (expandedAct == null) { e.Handled = true; return; }
                 var src = e.OriginalSource as DependencyObject;
                 if (FindUp<DragBar>(src) is DragBar db && db.WheelStep > 0) return;
+                if (FindUp<WheelColumn>(src) != null) return;   // Timer-Drehräder drehen
                 if (FindUp<ScrollViewer>(src) is ScrollViewer sv && sv.ScrollableHeight > 0.5)
                 {
                     bool canScroll = e.Delta > 0 ? sv.VerticalOffset > 0.5 : sv.VerticalOffset < sv.ScrollableHeight - 0.5;
@@ -507,16 +511,105 @@ namespace DynamicIsland
         // =================================================================
         //  Aktivitäten verwalten
         // =================================================================
+        // ---- Hinweise gestaffelt nach Priorität ----
+        readonly List<(Activity a, TimeSpan dur, DateTime queued)> alertQueue = new List<(Activity, TimeSpan, DateTime)>();
+
+        public static readonly (string Key, string Name)[] AlertCategories =
+        {
+            ("call", "Anrufe"), ("message", "Nachrichten"), ("claude", "Claude"), ("reminder", "Termine & Erinnerungen"),
+            ("timer", "Timer"), ("download", "Downloads & Spiele"), ("device", "Geräte"), ("copy", "Kopieren"), ("other", "Sonstiges"),
+        };
+
+        /// <summary>Kurze Systemanzeigen (Lautstärke, Feststelltaste …) laufen außerhalb der Warteschlange.</summary>
+        static bool Transient(Activity a) =>
+            a.Id == "volume" || a.Id == "caps" || a.Id == "dmute" || a.Id == "pet" || a.Id == "usb-out" || a.Id.StartsWith("bt-off-") || a.Id == "dmute";
+
+        static string CategoryOf(Activity a)
+        {
+            if (!string.IsNullOrEmpty(a.Category)) return a.Category;
+            var id = a.Id ?? "";
+            if (id == "call-in") return "call";
+            if (id == "msg" || id == "reply") return "message";
+            if (id == "timerdone") return "timer";
+            if (id == "cal-alert" || id == "todo-alert") return "reminder";
+            if (id == "dl-done" || id == "game-done") return "download";
+            if (id.StartsWith("bt-") || id.StartsWith("dev-") || id == "usb-in" || id.StartsWith("airpods")) return "device";
+            if (id == "clip") return "copy";
+            return "other";
+        }
+
+        int RankOf(Activity a)
+        {
+            var list = Settings.AlertPriority ?? new List<string>();
+            int i = list.IndexOf(CategoryOf(a));
+            return i < 0 ? list.Count : i;
+        }
+
+        void Enqueue(Activity a, TimeSpan dur)
+        {
+            alertQueue.RemoveAll(q => q.a.Id == a.Id);   // gleicher Hinweis nur einmal in der Schlange
+            alertQueue.Add((a, dur < TimeSpan.FromSeconds(2) ? TimeSpan.FromSeconds(2) : dur, DateTime.Now));
+        }
+
+        /// <summary>Kein Hinweis mehr sichtbar? → den wichtigsten wartenden zeigen.</summary>
+        void PumpAlertQueue()
+        {
+            if (alertQueue.Count == 0) return;
+            var now = DateTime.Now;
+            alertQueue.RemoveAll(q => (now - q.queued).TotalSeconds > 90);   // zu alt → verwerfen
+            bool busy = activities.Any(x => x.IsAlert && !Transient(x) && !x.Finished && (!x.ExpiresAt.HasValue || x.ExpiresAt > now));
+            if (busy || alertQueue.Count == 0) return;
+            var next = alertQueue.OrderBy(q => RankOf(q.a)).ThenBy(q => q.queued).First();
+            alertQueue.Remove(next);
+            var a = next.a;
+            a.Finished = false;
+            a.ExpiresAt = now + next.dur;
+            a.CreatedAt = now;
+            if (!activities.Contains(a)) activities.Add(a);
+            lastActive = now;
+            if (currentKey.Contains(a.Id)) currentKey = "";
+            Dispatcher.BeginInvoke(new Action(Morph), DispatcherPriority.Loaded);
+        }
+
         public void Add(Activity a)
         {
             a.Host = this;
+            // Mehrere Hinweise gleichzeitig: nacheinander nach Prioritätsliste statt sich gegenseitig zu überdecken
+            if (a.IsAlert && !Transient(a))
+            {
+                var now = DateTime.Now;
+                var cur = activities.FirstOrDefault(x => x.IsAlert && !Transient(x) && x.Id != a.Id && !x.Finished
+                                                         && (!x.ExpiresAt.HasValue || x.ExpiresAt > now));
+                if (cur != null)
+                {
+                    var dur = a.ExpiresAt.HasValue ? a.ExpiresAt.Value - now : TimeSpan.FromSeconds(4);
+                    if (RankOf(a) < RankOf(cur))
+                    {
+                        // wichtiger → unterbricht; der aktuelle wartet mit seiner Restzeit
+                        var rem = cur.ExpiresAt.HasValue ? cur.ExpiresAt.Value - now : TimeSpan.FromSeconds(3);
+                        activities.Remove(cur);
+                        Enqueue(cur, rem);
+                    }
+                    else
+                    {
+                        Enqueue(a, dur);
+                        return;
+                    }
+                }
+            }
             var existing = activities.FirstOrDefault(x => x.Id == a.Id);
             if (existing != null) RemoveInternal(existing);
             activities.Add(a);
             hidden.Remove(a.Id);
             CatsNotice(a);
-            if (!(a is MediaActivity) && !(a is SpotifyActivity))
-                lastActive = DateTime.Now; // kurz zeigen, wenn etwas Neues startet (Musik nur beim Überspringen)
+            // nur Hinweise (Nachrichten, „fertig“ …) holen die Island hervor – laufende Dinge (Claude, Timer, Musik) nicht
+            if (a.IsAlert)
+            {
+                lastActive = DateTime.Now;
+                // Apple-Stil: die Island „tropft“ beim Hinweis kurz in die Länge und federt aus (nicht bei Lautstärke & Co.)
+                if (a.Id != "volume" && a.Id != "caps" && a.Id != "clip" && a.Id != "dmute")
+                    Dispatcher.BeginInvoke(new Action(Morph), DispatcherPriority.Loaded);
+            }
             if (currentKey.Contains(a.Id)) currentKey = "";
             Relayout();
         }
@@ -574,6 +667,7 @@ namespace DynamicIsland
                 }
                 if (a.Finished || expired) RemoveInternal(a);
             }
+            PumpAlertQueue();   // wartende Hinweise nachrücken lassen
 
             var visible = activities.Where(a => !hidden.Contains(a.Id)).ToList();
             var alert = visible.Where(a => a.IsAlert).OrderByDescending(a => a.CreatedAt).FirstOrDefault();
@@ -605,7 +699,8 @@ namespace DynamicIsland
                 secondary = null;
             }
             else if (primary != null) { show = primary; w = primary.CompactWidth; h = primary.CompactHeight; }
-            else if (hovering) { show = clock; w = clock.CompactWidth; h = clock.CompactHeight; }
+            else if (hovering || Settings.IdlePill) { show = clock;   // Leerlauf-Pille zeigt Uhrzeit + Wetter
+                w = clock.CompactWidth; h = clock.CompactHeight; }
             else
             {
                 show = null;
@@ -621,7 +716,9 @@ namespace DynamicIsland
                 currentKey = key;
                 SetContent(show, expanded, w, h);
             }
-            AnimateSize(w, h);
+            bool alertNow = show != null && show.IsAlert && !expanded;
+            AnimateSize(w, h, (alertNow || alertShownBefore) && Ui.AlertMotion != "morph");   // Hinweise sanft hinein- und wieder hinausschieben
+            alertShownBefore = alertNow;
             rowWidth = w + (secondary != null ? 44 : 0) + 30 + 2 * (catsSpacer?.Width ?? 0);
             PlaceCats();
             UpdateNudge(!dragging);
@@ -791,6 +888,17 @@ namespace DynamicIsland
                     sc.BeginAnimation(ScaleTransform.ScaleXProperty, ga);
                     sc.BeginAnimation(ScaleTransform.ScaleYProperty, ga);
                 }
+                // Hinweis „schieben“: Inhalt gleitet sanft von links herein (statt zu hüpfen)
+                if (!expanded && a != null && a.IsAlert && Ui.AlertMotion == "slide" && !Ui.ReduceMotion && !sameView)
+                {
+                    var st = new TranslateTransform(-26, 0);
+                    wrap.RenderTransform = st;
+                    st.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-26, 0, TimeSpan.FromMilliseconds(440))
+                    {
+                        BeginTime = TimeSpan.FromMilliseconds(60),
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    });
+                }
                 if (sameView || sliding) wrap.Opacity = 1;
                 else wrap.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(240))
                 {
@@ -801,15 +909,18 @@ namespace DynamicIsland
             contentWasExpanded = expanded && el != null;
         }
         bool contentWasExpanded;
+        bool alertShownBefore;
 
-        void AnimateSize(double w, double h)
+        /// <summary>smooth = ohne Federn (Hinweise „schieben“ sanft statt zu hüpfen).</summary>
+        void AnimateSize(double w, double h, bool smooth = false)
         {
             if (Math.Abs(w - targetW) < 0.5 && Math.Abs(h - targetH) < 0.5) return;
             targetW = w;
             targetH = h;
-            var d = TimeSpan.FromMilliseconds(580);
-            pill.BeginAnimation(WidthProperty, new DoubleAnimation(w, d) { EasingFunction = EaseFor(pill.ActualWidth, w) });
-            pill.BeginAnimation(HeightProperty, new DoubleAnimation(h, d) { EasingFunction = EaseFor(pill.ActualHeight, h) });
+            var d = TimeSpan.FromMilliseconds(smooth ? 420 : 580);
+            IEasingFunction sm = new CubicEase { EasingMode = EasingMode.EaseOut };
+            pill.BeginAnimation(WidthProperty, new DoubleAnimation(w, d) { EasingFunction = smooth ? sm : EaseFor(pill.ActualWidth, w) });
+            pill.BeginAnimation(HeightProperty, new DoubleAnimation(h, d) { EasingFunction = smooth ? sm : EaseFor(pill.ActualHeight, h) });
         }
 
         // Feder-Animation, außer sie würde beim Schrumpfen unter 0 schwingen
@@ -981,7 +1092,7 @@ namespace DynamicIsland
         /// <summary>Panels (Kurzbefehle, Downloads, Ton, Hilfe) verschwinden, sobald man sie verlässt.</summary>
         static bool IsPanel(Activity a) => a is ShortcutsActivity || a is DownloadsActivity || a is SoundActivity
                                             || a is ClipboardActivity || a is AppSwitcherActivity || a is BrightnessActivity
-                                            || a is SpotifyListActivity || a is AirPodsActivity || a is BluetoothActivity || a is HeadphonesActivity || a is AiActivity || a is CalendarActivity || a is TodoActivity || a is WidgetPageActivity || a?.Id == "help";
+                                            || a is SpotifyListActivity || a is AirPodsActivity || a is BluetoothActivity || a is HeadphonesActivity || a is AiActivity || a is CalendarActivity || a is TodoActivity || a is WidgetPageActivity || a is TimerPickerActivity || a?.Id == "help";
 
         void Expand(Activity a)
         {
@@ -1202,13 +1313,29 @@ namespace DynamicIsland
             lastActive = DateTime.MinValue;   // Auto-Ausblenden greift sofort
         }
 
+        DateTime expandedIdleSince = DateTime.MinValue;
+
         void UpdateAutoHide()
         {
             CheckClickOutside();
             if (fsHidden) { SetTucked(true); return; }
             if (tickCount % 10 == 0) ClearStuckFlags();
+            // große Island ohne Maus darauf: nach 6 s von selbst zuklappen (sonst blieb sie z. B. nach einem Kürzel ewig offen)
+            if (expandedAct != null && !hovering && !catsHover && !typing && !menuOpen && !mouseDown
+                && !(expandedAct is AiActivity ai2 && ai2.Sticky))
+            {
+                if (expandedIdleSince == DateTime.MinValue) expandedIdleSince = DateTime.Now;
+                else if ((DateTime.Now - expandedIdleSince).TotalSeconds > 6)
+                {
+                    expandedIdleSince = DateTime.MinValue;
+                    Collapse();
+                    lastActive = DateTime.MinValue;   // und gleich wegfahren
+                }
+            }
+            else expandedIdleSince = DateTime.MinValue;
+
             bool busy = !Settings.AutoHide || hovering || mouseDown || rightDown || menuOpen || expandedAct != null
-                        || catsHover || setupWin != null
+                        || catsHover || (setupWin != null && setupWin.IsActive)   // nur solange du in den Einstellungen bist
                         || activities.Any(a => !hidden.Contains(a.Id) && KeepsVisible(a))
                         || CursorInZone();
             if (busy) lastActive = DateTime.Now;
@@ -2068,7 +2195,7 @@ namespace DynamicIsland
         /// <summary>Ereignisse mit Animation (einzeln an-/abschaltbar unter Einstellungen → Allgemein → Animationen).</summary>
         public static readonly (string Key, string Name, Color Color)[] AnimEvents =
         {
-            ("claude",   "Claude ist fertig",       Ui.Green),
+            ("claude",   "Claude ist fertig",       Logos.ClaudeOrange),
             ("timer",    "Timer abgelaufen",        Ui.Orange),
             ("download", "Download / Spiel fertig", Ui.Green),
             ("copy",     "Kopieren",                Ui.Teal),
@@ -2077,17 +2204,45 @@ namespace DynamicIsland
         };
 
         /// <summary>Animationsart „App im Vordergrund“ für dieses Ereignis an?</summary>
-        bool SpotlightOn(string evt) => AnimMode(evt) == "app" && !fsHidden && !Ui.ReduceMotion;
+        bool SpotlightOn(string evt) => (AnimMode(evt) == "app" || AnimMode(evt) == "appglow") && !fsHidden && !Ui.ReduceMotion;
 
         /// <summary>Gewählte Animation für ein Ereignis (Einstellungen → Animationen).</summary>
         public string AnimMode(string evt) =>
             evt != null && Settings.AnimModes != null && Settings.AnimModes.TryGetValue(evt, out var m) ? m ?? "off" : "off";
 
         /// <summary>Island wird länger: großes App-Symbol, daneben der Inhalt (springt hinein, gleitet nach).</summary>
-        public void Spotlight(Func<FrameworkElement> icon, Color c, string title, string sub, double seconds = 3.5, Func<bool> tap = null)
+        /// <summary>Spotlight für ein Ereignis: nimmt die eigene Farbe aus den Einstellungen (Symbol, Leuchten).</summary>
+        public void SpotlightE(string evt, Func<FrameworkElement> icon, Color c, string title, string sub, double seconds = 3.5, Func<bool> tap = null)
+        {
+            if (HasEventColor(evt))
+            {
+                var col = EventColor(evt, c);
+                var baseIcon = icon;
+                c = col;
+                icon = () =>
+                {
+                    var el = baseIcon();
+                    if (el is TextBlock tb && tb.FontFamily != Ui.EmojiFont) tb.Foreground = Ui.Br(col);
+                    return el;
+                };
+            }
+            Spotlight(icon, c, title, sub, seconds, tap, evt);
+            if (AnimMode(evt) == "appglow" && !Ui.ReduceMotion)
+            {
+                // App + Licht: erst die Island strecken, dann läuft das Licht
+                var col = c;
+                var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(tucked ? TuckMs + 320 : 320) };
+                var gs = GlowStyleFor(evt);
+                t.Tick += (s2, e2) => { t.Stop(); Glow(col, gs); };
+                t.Start();
+            }
+        }
+
+        public void Spotlight(Func<FrameworkElement> icon, Color c, string title, string sub, double seconds = 3.5, Func<bool> tap = null, string category = null)
         {
             expandedAct = null;
-            var s = new SpotlightActivity(icon, c, title, sub, seconds, tap) { Host = this };
+            var s = new SpotlightActivity(icon, c, title, sub, seconds, tap) { Host = this, Category = category };
+            s.Id = "spotlight-" + (category ?? "other");   // eigene Kennung pro Art → stellen sich an statt sich zu ersetzen
             Add(s);
             foreach (var cat in catViews.Concat(stripCats)) cat.Hop();
         }
@@ -2098,10 +2253,10 @@ namespace DynamicIsland
             if (SpotlightOn("claude"))
             {
                 string sub = (string.IsNullOrEmpty(a.Project) ? "" : a.Project + " · ") + "nach " + ClaudeActivity.Dur(a.DoneAfter);
-                Spotlight(() => Logos.Claude(22), Logos.ClaudeOrange, "Claude ist fertig", sub, 4.5,
+                SpotlightE("claude", () => Logos.Claude(22), Logos.ClaudeOrange, "Claude ist fertig", sub, 4.5,
                           () => { pinnedId = a.Id; Relayout(); return true; });
             }
-            else Celebrate(Ui.Green, "claude");
+            else Celebrate(Logos.ClaudeOrange, "claude");
         }
 
         /// <summary>Vorschau eines Ereignisses aus den Einstellungen (Animations-Tester).</summary>
@@ -2109,15 +2264,15 @@ namespace DynamicIsland
         {
             var mode = AnimMode(key);
             if (mode == "off") mode = "app";                       // „Aus“ testen: trotzdem etwas zeigen
-            if (mode != "app") { Celebrate(c, key, true, mode); return; }
+            if (mode != "app" && mode != "appglow") { Celebrate(c, key, true, mode); return; }
             switch (key)
             {
-                case "claude": Spotlight(() => Logos.Claude(22), Logos.ClaudeOrange, "Claude ist fertig", "Dyamicisland+ · nach 3:12"); break;
-                case "timer": Spotlight(() => Ui.Glyph("", 18, Ui.Br(Ui.Orange)), Ui.Orange, "Timer abgelaufen", DateTime.Now.ToString("HH:mm")); break;
-                case "download": Spotlight(() => Ui.Glyph("", 18, Ui.Br(Ui.Green)), Ui.Green, "Download fertig", "Beispiel.zip · 24,3 MB"); break;
-                case "copy": Spotlight(() => Ui.Glyph("", 18, Ui.Br(Ui.Teal)), Ui.Teal, "Kopiert", "Beispieltext aus der Zwischenablage", 2.5); break;
-                case "message": Spotlight(() => Logos.Discord(22), Logos.DiscordBlurple, "Luca", "Kommst du heute noch online?"); break;
-                case "device": Spotlight(() => Ui.Glyph("", 18, Ui.Br(Ui.Purple)), Ui.Purple, "soundcore Q20i", "Verbunden · Akku 80 %"); break;
+                case "claude": SpotlightE("claude", () => Logos.Claude(22), Logos.ClaudeOrange, "Claude ist fertig", "Dyamicisland+ · nach 3:12"); break;
+                case "timer": SpotlightE("timer", () => Ui.Glyph("", 18, Ui.Br(Ui.Orange)), Ui.Orange, "Timer abgelaufen", DateTime.Now.ToString("HH:mm")); break;
+                case "download": SpotlightE("download", () => Ui.Glyph("", 18, Ui.Br(Ui.Green)), Ui.Green, "Download fertig", "Beispiel.zip · 24,3 MB"); break;
+                case "copy": SpotlightE("copy", () => Ui.Glyph("", 18, Ui.Br(Ui.Teal)), Ui.Teal, "Kopiert", "Beispieltext aus der Zwischenablage", 2.5); break;
+                case "message": SpotlightE("message", () => Logos.Discord(22), Logos.DiscordBlurple, "Luca", "Kommst du heute noch online?"); break;
+                case "device": SpotlightE("device", () => Ui.Glyph("", 18, Ui.Br(Ui.Purple)), Ui.Purple, "soundcore Q20i", "Verbunden · Akku 80 %"); break;
                 default: Celebrate(c, key, true); break;
             }
         }
@@ -2127,7 +2282,9 @@ namespace DynamicIsland
         public void Celebrate(Color c, string evt = null, bool test = false, string forceMode = null)
         {
             var mode = forceMode ?? (evt == null ? "both" : AnimMode(evt));
+            c = EventColor(evt, c);   // eigene Farbe aus den Einstellungen
             if (mode == "app") mode = "bounce";   // ohne eigene Großansicht (z. B. Nachricht-Banner): kleiner Hüpfer
+            if (mode == "appglow") mode = "glow";
             if (mode == "off" || (Ui.ReduceMotion && !test) || pill == null) return;
             lastActive = DateTime.Now;
             Relayout();
@@ -2136,14 +2293,117 @@ namespace DynamicIsland
             t.Tick += (s, e) =>
             {
                 t.Stop();
-                if (mode == "glow" || mode == "both") Glow(c);
+                if (mode == "glow" || mode == "both") Glow(c, GlowStyleFor(evt));
                 if (mode == "bounce" || mode == "both") Bounce();
                 foreach (var cat in catViews.Concat(stripCats)) cat.Hop();
             };
             t.Start();
         }
 
-        void Glow(Color c)
+        /// <summary>Licht-Effekt je nach Einstellung (Einstellungen → Animationen → Licht-Effekt).</summary>
+        public void Glow(Color c, string style = null)
+        {
+            lastActive = DateTime.Now;
+            if (tucked) SetTucked(false);   // Vorschau aus den Einstellungen: Island dafür hervorholen
+            switch (style ?? Settings.GlowStyle ?? "orbit")
+            {
+                case "orbit": GlowOrbit(c); break;
+                case "halo": GlowHalo(c); break;
+                case "shine": GlowShine(c); break;
+                default: GlowRing(c); break;
+            }
+        }
+
+        /// <summary>Ein Lichtstreifen läuft einmal um die Island herum und verglüht.</summary>
+        void GlowOrbit(Color c)
+        {
+            if (pillStackRef == null) return;
+            double w = Math.Max(30, pill.ActualWidth), h = Math.Max(20, pill.ActualHeight);
+            double r = Math.Min(h / 2, 44), th = 2.6;
+            double perim = 2 * (w + h) - (8 - 2 * Math.PI) * r;
+            double dash = perim * 0.22 / th, gap = perim / th;
+            var line = new System.Windows.Shapes.Rectangle
+            {
+                Width = w, Height = h, RadiusX = r, RadiusY = r,
+                Stroke = Ui.Br(CatStyle.Mix(c, Colors.White, 0.18)),   // reine Ereignisfarbe (leicht aufgehellt, ohne Farbverlauf)
+                StrokeThickness = th,
+                StrokeDashArray = new DoubleCollection { dash, gap },
+                StrokeDashCap = PenLineCap.Round,
+                VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center,
+                IsHitTestVisible = false, RenderTransform = pill.RenderTransform, RenderTransformOrigin = new Point(0.5, 0),
+                Effect = new DropShadowEffect { Color = c, BlurRadius = 16, ShadowDepth = 0, Opacity = 1 }
+            };
+            pillStackRef.Children.Add(line);
+            var run = new DoubleAnimation(0, -perim / th, TimeSpan.FromMilliseconds(1250)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+            line.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, run);
+            var fade = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(1500) };
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120))));
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1150))));
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1500))));
+            fade.Completed += (s, e) => pillStackRef.Children.Remove(line);
+            line.Opacity = 0;
+            line.BeginAnimation(OpacityProperty, fade);
+        }
+
+        /// <summary>Weicher farbiger Schein hinter der Island, der einmal aufblüht.</summary>
+        void GlowHalo(Color c)
+        {
+            if (pillStackRef == null) return;
+            var sc = new ScaleTransform(0.9, 0.9);
+            var halo = new Border
+            {
+                Background = Ui.Br(c, 200), IsHitTestVisible = false,
+                VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center,
+                RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = sc,
+                Effect = new BlurEffect { Radius = 26 }, Opacity = 0
+            };
+            halo.SetBinding(WidthProperty, new System.Windows.Data.Binding("Width") { Source = pill });
+            halo.SetBinding(HeightProperty, new System.Windows.Data.Binding("Height") { Source = pill });
+            halo.SetBinding(Border.CornerRadiusProperty, new System.Windows.Data.Binding("CornerRadius") { Source = pill });
+            pillStackRef.Children.Insert(1, halo);   // hinter der Pille, vor dem Schatten
+            var fade = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(1400) };
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(0.9, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1400)), new CubicEase { EasingMode = EasingMode.EaseIn }));
+            fade.Completed += (s, e) => pillStackRef.Children.Remove(halo);
+            halo.BeginAnimation(OpacityProperty, fade);
+            var grow = new DoubleAnimation(0.9, 1.18, TimeSpan.FromMilliseconds(1400)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+            sc.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+            sc.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.9, 1.5, TimeSpan.FromMilliseconds(1400)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        }
+
+        /// <summary>Ein Glanzstreifen zieht einmal schräg über die Island.</summary>
+        void GlowShine(Color c)
+        {
+            if (pillStackRef == null) return;
+            double w = Math.Max(30, pill.ActualWidth), h = Math.Max(20, pill.ActualHeight), r = Math.Min(h / 2, 44);
+            var tr = new TranslateTransform(-w * 0.6, 0);
+            var streak = new System.Windows.Shapes.Rectangle
+            {
+                Width = w * 0.35, Height = h * 2,
+                Fill = new LinearGradientBrush(new GradientStopCollection
+                {
+                    new GradientStop(Colors.Transparent, 0),
+                    new GradientStop(Color.FromArgb(150, (byte)Math.Min(255, c.R / 2 + 128), (byte)Math.Min(255, c.G / 2 + 128), (byte)Math.Min(255, c.B / 2 + 128)), 0.5),
+                    new GradientStop(Colors.Transparent, 1)
+                }, 0),
+                RenderTransform = new TransformGroup { Children = { new SkewTransform(-25, 0), tr } },
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center
+            };
+            var host = new Grid
+            {
+                Width = w, Height = h, IsHitTestVisible = false,
+                VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center,
+                Clip = new RectangleGeometry(new Rect(0, 0, w, h), r, r),
+                RenderTransform = pill.RenderTransform, RenderTransformOrigin = new Point(0.5, 0)
+            };
+            host.Children.Add(streak);
+            pillStackRef.Children.Add(host);
+            var run = new DoubleAnimation(-w * 0.6, w * 1.2, TimeSpan.FromMilliseconds(900)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+            run.Completed += (s, e) => pillStackRef.Children.Remove(host);
+            tr.BeginAnimation(TranslateTransform.XProperty, run);
+        }
+
+        void GlowRing(Color c)
         {
             if (pillStackRef == null) return;
             var sc = new ScaleTransform(1, 1);
@@ -2180,6 +2440,40 @@ namespace DynamicIsland
             sc.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
             sc.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 1.12, TimeSpan.FromMilliseconds(1500)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         }
+
+        /// <summary>
+        /// Apple-Morph: Die Pille wird beim Auftauchen eines Hinweises erst schmal und hoch (Tropfen),
+        /// dann breit und federt mit leichtem Überschwingen in die neue Form.
+        /// </summary>
+        void Morph()
+        {
+            if (Ui.ReduceMotion || pill == null || Ui.AlertMotion != "morph") return;   // nur bei „Tropfen (Apple)“
+            DoubleAnimationUsingKeyFrames K(params (double ms, double v)[] k)
+            {
+                var a = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(k[k.Length - 1].ms) };
+                foreach (var (ms, v) in k)
+                    a.KeyFrames.Add(new EasingDoubleKeyFrame(v, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(ms)), new SineEase { EasingMode = EasingMode.EaseInOut }));
+                return a;
+            }
+            double b = hovering && expandedAct == null ? 1.04 : 1.0;
+            pillScale.BeginAnimation(ScaleTransform.ScaleXProperty, K((0, b * 0.84), (200, b * 1.05), (380, b * 0.985), (560, b * 1.006), (720, b)));
+            pillScale.BeginAnimation(ScaleTransform.ScaleYProperty, K((0, b * 1.14), (200, b * 0.94), (380, b * 1.02), (560, b * 0.997), (720, b)));
+        }
+
+        /// <summary>Eigene Farbe für ein Ereignis (Einstellungen → Animationen), sonst die Standardfarbe.</summary>
+        public Color EventColor(string evt, Color fallback)
+        {
+            if (evt != null && Settings.AnimColors != null && Settings.AnimColors.TryGetValue(evt, out var hex)
+                && !string.IsNullOrEmpty(hex) && CatStyle.TryColor(hex, out var c)) return c;
+            return fallback;
+        }
+
+        /// <summary>Licht-Effekt für ein Ereignis (eigene Wahl, sonst der allgemeine).</summary>
+        public string GlowStyleFor(string evt) =>
+            evt != null && Settings.GlowStyles != null && Settings.GlowStyles.TryGetValue(evt, out var st) && !string.IsNullOrEmpty(st)
+                ? st : (Settings.GlowStyle ?? "orbit");
+
+        bool HasEventColor(string evt) => evt != null && Settings.AnimColors != null && Settings.AnimColors.TryGetValue(evt, out var h) && !string.IsNullOrEmpty(h);
 
         void Bounce()
         {
@@ -2609,7 +2903,7 @@ namespace DynamicIsland
                 if (gameActs.TryGetValue(d.Key, out var g)) { g.Finished = true; gameActs.Remove(d.Key); }
                 if (SpotlightOn("download"))
                 {
-                    Spotlight(() => Ui.Glyph("", 18, Ui.Br(Ui.Green)), Ui.Green, d.Name, d.Store + " · bereit zum Spielen", 5);
+                    SpotlightE("download", () => Ui.Glyph("", 18, Ui.Br(Ui.Green)), Ui.Green, d.Name, d.Store + " · bereit zum Spielen", 5);
                     return;
                 }
                 Celebrate(Ui.Green, "download");
@@ -2679,7 +2973,7 @@ namespace DynamicIsland
             var path = it.FinalPath;
             if (SpotlightOn("download"))
             {
-                Spotlight(() => Ui.Glyph("", 18, Ui.Br(Ui.Green)), Ui.Green, it.Name,
+                SpotlightE("download", () => Ui.Glyph("", 18, Ui.Br(Ui.Green)), Ui.Green, it.Name,
                           "Download fertig · " + DownloadWatcher.FormatSize(it.Size) + " · Tippen zum Öffnen", 5,
                           () => { OpenFile(path); return true; });
                 return;
@@ -2913,6 +3207,9 @@ namespace DynamicIsland
         /// <summary>Verbundene normale Kopfhörer (AirPods ausgenommen, die haben ihre eigene Seite).</summary>
         public BtDev StandardHeadphones => bt.Headphones(IsAirPodsName);
 
+        /// <summary>Akkustand eines verbundenen Bluetooth-Geräts (falls Windows ihn kennt).</summary>
+        public int? BtBatteryOf(string name) => bt.Connected.FirstOrDefault(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase))?.Battery;
+
         bool IsAirPodsName(string n)
         {
             if (string.IsNullOrEmpty(n)) return false;
@@ -3118,6 +3415,7 @@ namespace DynamicIsland
                 if (tickCount > 1) _ = Calendar.RefreshAsync();
             }
             UpdateAutoHide();
+            if (alertQueue.Count > 0 && tickCount % 4 == 0) Relayout();   // nächsten Hinweis aus der Warteschlange holen
             if (catViews.Count > 0)
             {
                 var now = DateTime.Now;
@@ -3200,7 +3498,7 @@ namespace DynamicIsland
                 // „übersprungen“ und hielt die Island dauerhaft sichtbar. Jetzt nur echte Titelwechsel bei laufender Musik.
                 if (id != null && id != lastSpotifyTrack)
                 {
-                    if (lastSpotifyTrack != null && Spotify.Playing && WasSkip(spPrevPos, spPrevDur)) lastActive = DateTime.Now; // übersprungen → kurz zeigen
+                    // (Songwechsel holt die Island nicht mehr hervor – nur Hinweise tun das)
                     lastSpotifyTrack = id;
                 }
                 spPrevPos = Spotify.Position;
@@ -3238,7 +3536,7 @@ namespace DynamicIsland
             {
                 // nur beim Überspringen kurz zeigen, nicht wenn ein Song normal zu Ende läuft
                 bool natural = (DateTime.Now - mdNaturalAt).TotalSeconds < 6 || !WasSkip(mdPrevPos, mdPrevDur);
-                if (trackKey.Length > 0 && lastTrackKey.Length > 0 && !natural && Media.Playing) lastActive = DateTime.Now;
+                // (Songwechsel holt die Island nicht mehr hervor)
                 if (trackKey.Length > 0) lastTrackKey = trackKey;   // kurzes „nichts läuft“ nicht als Titelwechsel werten
             }
             mdPrevPos = pos;
@@ -3396,7 +3694,7 @@ namespace DynamicIsland
 
                     if (SpotlightOn("copy"))
                     {
-                        Spotlight(() => Ui.Glyph("", 18, Ui.Br(Ui.Teal)), Ui.Teal, title, sub ?? "", 2.2,
+                        SpotlightE("copy", () => Ui.Glyph("", 18, Ui.Br(Ui.Teal)), Ui.Teal, title, sub ?? "", 2.2,
                                   () => { ShowClipboardHistory(); return true; });
                         return;
                     }
@@ -3787,7 +4085,7 @@ namespace DynamicIsland
             Native.Beep();
             if (SpotlightOn("timer"))
             {
-                Spotlight(() => emoji != null ? Ui.Glyph(emoji, 18, Ui.White, Ui.EmojiFont) : Ui.Glyph(glyph, 18, Ui.Br(c)), c,
+                SpotlightE("timer", () => emoji != null ? Ui.Glyph(emoji, 18, Ui.White, Ui.EmojiFont) : Ui.Glyph(glyph, 18, Ui.Br(c)), c,
                           label + " abgelaufen", DateTime.Now.ToString("HH:mm") + " · Tippen zum Schließen", 8);
                 return;
             }
@@ -4040,7 +4338,15 @@ namespace DynamicIsland
         }
 
         // Diese Menüs öffnen auch die Buttons in der Übersicht (Island antippen).
-        public void ShowTimerMenu() { var cm = new ContextMenu(); AddTimerItems(cm.Items); OpenMenu(cm); }
+        // Timer: Auswahl wie in der Uhr-App (Drehräder) statt Menü
+        public void ShowTimerMenu()
+        {
+            var a = activities.OfType<TimerPickerActivity>().FirstOrDefault() ?? new TimerPickerActivity(this) { Host = this };
+            a.Finished = false;
+            a.ExpiresAt = DateTime.Now.AddMinutes(2);
+            if (activities.Contains(a)) Rebuild(a); else Add(a);
+            Expand(a);
+        }
         public void ShowDemoMenu() { var cm = new ContextMenu(); AddDemoItems(cm.Items); OpenMenu(cm); }
         public void ShowSettingsMenu() => OpenSetup("general");
 
@@ -4059,6 +4365,8 @@ namespace DynamicIsland
             }
             LiquidGlass.Configure(Settings.Material != "flat", Settings.GlassTint);
             Ui.Accent = Ui.ParseColor(Settings.AccentColor, Ui.Blue);
+            Ui.CompactAlerts = Settings.AlertSize != "normal";   // Hinweise klein und schlicht
+            Ui.AlertMotion = Settings.AlertMotion ?? "slide";
             Ui.SpotifyAccent = Ui.ParseColor(Settings.SpotifyColor, Color.FromRgb(0x1E, 0xD7, 0x60));
             RefreshCats();
             pageCache.Clear();   // Größe/Seiten können sich geändert haben

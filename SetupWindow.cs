@@ -498,12 +498,81 @@ namespace DynamicIsland
         // =================================================================
         //  Animationen: pro Ereignis wählen + direkt testen
         // =================================================================
-        static readonly string[] AnimModeKeys = { "off", "app", "glow", "bounce", "both" };
-        static readonly string[] AnimModeNames = { "Aus", "App", "Leuchten", "Hüpfen", "Beides" };
+        static readonly string[] AnimModeKeys = { "off", "app", "appglow", "glow", "bounce", "both" };
+        static readonly string[] AnimModeNames = { "Aus", "App", "App + Licht", "Licht", "Hüpfen", "Licht + Hüpfen" };
+        static readonly (string Hex, string Name)[] AnimPalette =
+        {
+            ("#FF453A", "Rot"), ("#FF9F0A", "Orange"), ("#FFD60A", "Gelb"), ("#30D158", "Grün"), ("#64D2FF", "Türkis"),
+            ("#0A84FF", "Blau"), ("#5E5CE6", "Indigo"), ("#BF5AF2", "Lila"), ("#FF375F", "Pink"), ("#F5F5F7", "Weiß"),
+        };
 
         void BuildAnim(StackPanel root)
         {
             s.AnimModes ??= new Dictionary<string, string>();
+            // Licht-Effekt (für „Licht“ und „App + Licht“) – schlicht gehalten, mit Vorschau
+            root.Children.Add(Header("Licht-Effekt (Standard)"));
+            var glowKeys = new[] { "orbit", "halo", "shine", "ring" };
+            var glowCard = new StackPanel();
+            glowCard.Children.Add(SegmentRow("Effekt", new[] { "Umlauf", "Schein", "Glanz", "Rahmen" },
+                Math.Max(0, Array.IndexOf(glowKeys, s.GlowStyle ?? "orbit")),
+                i => { s.GlowStyle = glowKeys[i]; s.Save(); host.Glow(Ui.Accent, glowKeys[i]); }));
+            glowCard.Children.Add(Divider());
+            glowCard.Children.Add(ButtonRow(SmallButton("Vorschau", () => host.Glow(Ui.Accent))));
+            root.Children.Add(Card(glowCard));
+            root.Children.Add(Footer("Umlauf: ein Lichtstreifen läuft einmal um die Island. Schein: weicher farbiger Schimmer dahinter. " +
+                                     "Glanz: ein Lichtreflex zieht über die Island. Rahmen: farbiger Rand leuchtet zweimal auf. " +
+                                     "Das Licht hat immer die Farbe, die du unten beim jeweiligen Ereignis eingestellt hast."));
+
+            // Größe der Hinweise
+            root.Children.Add(Header("Hinweise"));
+            var sizeCard = new StackPanel();
+            var sizeKeys = new[] { "small", "normal" };
+            sizeCard.Children.Add(SegmentRow("Größe der Hinweise", new[] { "Klein & schlicht", "Groß" },
+                Math.Max(0, Array.IndexOf(sizeKeys, s.AlertSize ?? "small")),
+                i => { s.AlertSize = sizeKeys[i]; Apply(); host.TestEvent("copy", Ui.Teal); }));
+            sizeCard.Children.Add(Divider());
+            var motionKeys = new[] { "slide", "morph", "none" };
+            sizeCard.Children.Add(SegmentRow("Erscheinen", new[] { "Schieben", "Tropfen (federnd)", "Ohne" },
+                Math.Max(0, Array.IndexOf(motionKeys, s.AlertMotion ?? "slide")),
+                i => { s.AlertMotion = motionKeys[i]; Apply(); host.TestEvent("copy", Ui.Teal); }));
+            root.Children.Add(Card(sizeCard));
+            root.Children.Add(Footer("Klein: Hinweise bleiben eine flache Pille mit kleinem Symbol und einer Zeile Text. Groß: breite Ansicht mit großem Symbol und zwei Zeilen. " +
+                                     "Schieben: die Island wird sanft länger, der Inhalt gleitet hinein. Tropfen: die Island federt wie beim iPhone. Ohne: einfach einblenden."));
+
+            // Prioritätsliste: kommen mehrere Hinweise gleichzeitig, erscheinen sie nacheinander in dieser Reihenfolge
+            root.Children.Add(Header("Reihenfolge bei mehreren Hinweisen"));
+            var prioList = new StackPanel();
+            s.AlertPriority ??= new List<string>();
+            foreach (var (key, _) in IslandWindow.AlertCategories)
+                if (!s.AlertPriority.Contains(key)) s.AlertPriority.Add(key);
+            for (int i = 0; i < s.AlertPriority.Count; i++)
+            {
+                int idx = i;
+                var key = s.AlertPriority[i];
+                var name = IslandWindow.AlertCategories.FirstOrDefault(x => x.Key == key).Name ?? key;
+                if (i > 0) prioList.Children.Add(Divider());
+                var row = new Grid { MinHeight = 40, Margin = new Thickness(16, 0, 10, 0) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var num = Ui.Text((i + 1).ToString(), 13, Secondary, true);
+                num.VerticalAlignment = VerticalAlignment.Center;
+                var lbl = Ui.Text(name, 14, Ui.White, false);
+                lbl.VerticalAlignment = VerticalAlignment.Center;
+                var up = Ui.RoundButton("", 11, () => MovePrio(idx, -1), 28, FieldBrush, Ui.White);
+                var down = Ui.RoundButton("", 11, () => MovePrio(idx, 1), 28, FieldBrush, Ui.White);
+                if (i == 0) up.Opacity = 0.3;
+                if (i == s.AlertPriority.Count - 1) down.Opacity = 0.3;
+                var arrows = Ui.HStack(6, up, down);
+                arrows.VerticalAlignment = VerticalAlignment.Center;
+                Grid.SetColumn(lbl, 1); Grid.SetColumn(arrows, 2);
+                row.Children.Add(num); row.Children.Add(lbl); row.Children.Add(arrows);
+                prioList.Children.Add(row);
+            }
+            root.Children.Add(Card(prioList));
+            root.Children.Add(Footer("Kommen mehrere Hinweise gleichzeitig, zeigt die Island sie nacheinander – oben zuerst. " +
+                                     "Ein wichtigerer Hinweis unterbricht einen weniger wichtigen; der kommt danach mit seiner Restzeit wieder."));
+
             root.Children.Add(Header("Pro Ereignis"));
             var list = new StackPanel();
             bool first = true;
@@ -516,7 +585,45 @@ namespace DynamicIsland
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                var dot = new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Background = Ui.Br(c), Margin = new Thickness(0, 0, 9, 0), VerticalAlignment = VerticalAlignment.Center };
+                // Farbpunkt = Farbe des Ereignisses; anklicken → eigene Farbe wählen
+                var effective = host.EventColor(k, c);
+                var dot = new Border
+                {
+                    Width = 18, Height = 18, CornerRadius = new CornerRadius(9),
+                    Background = Ui.Br(effective), BorderBrush = Ui.Br(Colors.White, 90), BorderThickness = new Thickness(1.5),
+                    Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = Cursors.Hand, ToolTip = "Farbe ändern"
+                };
+                dot.MouseLeftButtonUp += (o, e) =>
+                {
+                    var cm = new ContextMenu();
+                    void Pick(string hex)
+                    {
+                        s.AnimColors ??= new Dictionary<string, string>();
+                        if (hex == null) s.AnimColors.Remove(k); else s.AnimColors[k] = hex;
+                        s.Save();
+                        host.TestEvent(k, c);
+                        Later(() => ShowPage("anim"));
+                    }
+                    var std = new MenuItem { Header = "Standardfarbe" };
+                    std.Click += (o2, e2) => Pick(null);
+                    cm.Items.Add(std);
+                    cm.Items.Add(new Separator());
+                    foreach (var (hex, label) in AnimPalette)
+                    {
+                        var h = hex;
+                        CatStyle.TryColor(h, out var col);
+                        var mi = new MenuItem
+                        {
+                            Header = label,
+                            Icon = new Border { Width = 12, Height = 12, CornerRadius = new CornerRadius(6), Background = Ui.Br(col) }
+                        };
+                        mi.Click += (o2, e2) => Pick(h);
+                        cm.Items.Add(mi);
+                    }
+                    cm.PlacementTarget = dot;
+                    cm.IsOpen = true;
+                };
                 var label = Ui.HStack(0, dot, Ui.Text(name, 14, Ui.White, false));
                 label.VerticalAlignment = VerticalAlignment.Center;
                 s.AnimModes.TryGetValue(k, out var cur);
@@ -526,13 +633,44 @@ namespace DynamicIsland
                     s.AnimModes[k] = AnimModeKeys[i];
                     s.Save();
                     if (i > 0) host.TestEvent(k, c);   // sofort zeigen, wie es aussieht
+                    Later(() => ShowPage("anim"));       // Licht-Auswahl ein-/ausblenden
                 });
                 var test = Ui.RoundButton("", 12, () => host.TestEvent(k, c), 30, FieldBrush, Ui.White);
                 test.ToolTip = "Testen";
                 test.Margin = new Thickness(8, 0, 0, 0);
                 test.VerticalAlignment = VerticalAlignment.Center;
-                Grid.SetColumn(seg, 1);
+                // zweizeilig: oben Name + Testen, darunter die Auswahl (passt auch mit 6 Optionen)
+                g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                Grid.SetRow(seg, 1); Grid.SetColumnSpan(seg, 3);
+                seg.HorizontalAlignment = HorizontalAlignment.Left;
+                seg.Margin = new Thickness(28, 2, 0, 12);
+                label.Margin = new Thickness(0, 10, 0, 6);
                 Grid.SetColumn(test, 2);
+                // Licht-Effekt nur für dieses Ereignis (erscheint, wenn die Art Licht enthält)
+                var curMode = cur ?? "off";
+                if (curMode == "glow" || curMode == "appglow" || curMode == "both")
+                {
+                    g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                    var gk = new[] { "", "orbit", "halo", "shine", "ring" };
+                    s.GlowStyles ??= new Dictionary<string, string>();
+                    s.GlowStyles.TryGetValue(k, out var gcur);
+                    var gseg = Segmented(new[] { "Wie oben", "Umlauf", "Schein", "Glanz", "Rahmen" }, Math.Max(0, Array.IndexOf(gk, gcur ?? "")), i =>
+                    {
+                        if (i == 0) s.GlowStyles.Remove(k); else s.GlowStyles[k] = gk[i];
+                        s.Save();
+                        host.TestEvent(k, c);
+                    });
+                    var lightLabel = Ui.Text("Licht", 12, Ui.Dim, false);
+                    lightLabel.VerticalAlignment = VerticalAlignment.Center;
+                    lightLabel.Margin = new Thickness(0, 0, 8, 0);
+                    var lightRow = Ui.HStack(0, lightLabel, gseg);
+                    lightRow.HorizontalAlignment = HorizontalAlignment.Left;
+                    lightRow.Margin = new Thickness(28, 0, 0, 12);
+                    Grid.SetRow(lightRow, 2); Grid.SetColumnSpan(lightRow, 3);
+                    seg.Margin = new Thickness(28, 2, 0, 6);
+                    g.Children.Add(lightRow);
+                }
                 g.Children.Add(label);
                 g.Children.Add(seg);
                 g.Children.Add(test);
@@ -540,17 +678,27 @@ namespace DynamicIsland
             }
             root.Children.Add(Card(list));
             root.Children.Add(Footer("„App“: Die Island wird länger und zeigt groß das Symbol der App, daneben den Inhalt (z. B. „Claude ist fertig · nach 3:12“). " +
-                                     "„Leuchten“: farbiger Rahmen um die Island. „Hüpfen“: kleiner Federhüpfer. Die Katzen hüpfen immer mit. " +
+                                     "„Licht“: Licht-Effekt (oben wählbar). „App + Licht“: beides nacheinander. „Hüpfen“: kleiner Federhüpfer. Die Katzen hüpfen immer mit. " +
                                      "▶ spielt die Animation zum Testen ab."));
 
             root.Children.Add(Header("Schnell einstellen"));
             var quick = new StackPanel();
             quick.Children.Add(ButtonRow(
                 SmallButton("Alle: App", () => SetAllAnim("app")),
-                SmallButton("Alle: Leuchten", () => SetAllAnim("glow")),
+                SmallButton("Alle: App + Licht", () => SetAllAnim("appglow")),
                 SmallButton("Alle: Hüpfen", () => SetAllAnim("bounce")),
                 SmallButton("Alle aus", () => SetAllAnim("off"), true)));
             root.Children.Add(Card(quick));
+        }
+
+        void MovePrio(int i, int dir)
+        {
+            var l = s.AlertPriority;
+            int j = i + dir;
+            if (l == null || j < 0 || j >= l.Count) return;
+            (l[i], l[j]) = (l[j], l[i]);
+            s.Save();
+            Later(() => ShowPage("anim"));
         }
 
         void SetAllAnim(string mode)

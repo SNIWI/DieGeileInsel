@@ -56,6 +56,10 @@ namespace DynamicIsland
 
         /// <summary>Windows-Einstellung „Animationen anzeigen“ aus = Bewegung reduzieren (Apple: Reduce Motion).</summary>
         public static bool ReduceMotion => !SystemParameters.ClientAreaAnimation;
+        /// <summary>Hinweise klein und schlicht (Einstellungen → Animationen → Größe der Hinweise).</summary>
+        public static bool CompactAlerts = true;
+        /// <summary>Erscheinen von Hinweisen: slide · morph · none.</summary>
+        public static string AlertMotion = "slide";
 
         public static SolidColorBrush Br(Color c)
         {

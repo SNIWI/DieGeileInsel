@@ -72,80 +72,100 @@ namespace DynamicIsland
         {
             if (!loaded) Reload();
             bool on = radio == null || radio.State == RadioState.On;
-            var root = new StackPanel { Margin = new Thickness(22, 16, 22, 12) };
+            var blue = Ui.Br(Color.FromRgb(0x0A, 0x84, 0xFF));
+            var root = new StackPanel { Margin = new Thickness(22, 14, 22, 10) };
 
-            // Kopf: Titel + Schalter (wie im Kontrollzentrum)
-            var title = Ui.Text("Bluetooth", 17, Ui.White);
-            var sub = Ui.Text(radio == null && loaded ? "Kein Bluetooth-Adapter gefunden" : on ? "An" : "Aus", 12.5, Ui.Dim, false);
-            var texts = Ui.VStack(2, title, sub);
-            var sw = Switch(on, async v =>
+            // Kopf wie im Kontrollzentrum: runder Knopf (blau = an) ist der Schalter
+            var toggle = new Border
             {
+                Width = 44, Height = 44, CornerRadius = new CornerRadius(22),
+                Background = on ? blue : Ui.Br(Colors.White, 40), Cursor = Cursors.Hand,
+                Child = Ui.Glyph(BtGlyph, 18, Ui.White), ToolTip = on ? "Bluetooth ausschalten" : "Bluetooth einschalten"
+            };
+            Ui.Pressable(toggle, 0.9);
+            toggle.MouseLeftButtonDown += (s, e) => e.Handled = true;
+            toggle.MouseLeftButtonUp += async (s, e) =>
+            {
+                e.Handled = true;
                 if (radio == null) { IslandWindow.Open("ms-settings:bluetooth"); return; }
                 try
                 {
                     await Radio.RequestAccessAsync();
-                    await radio.SetStateAsync(v ? RadioState.On : RadioState.Off);
+                    await radio.SetStateAsync(on ? RadioState.Off : RadioState.On);
                 }
                 catch (Exception ex) { Program.Log(ex); IslandWindow.Open("ms-settings:bluetooth"); }
                 await Task.Delay(600);
                 Reload();
-            });
+            };
+            int connected = devices.Count(d => d.connected);
+            var title = Ui.Text("Bluetooth", 17, Ui.White);
+            var sub = Ui.Text(radio == null && loaded ? "Kein Adapter gefunden"
+                              : !on ? "Aus"
+                              : connected == 0 ? "An · nichts verbunden"
+                              : connected == 1 ? "An · 1 Gerät verbunden" : $"An · {connected} Geräte verbunden", 12.5, Ui.Dim, false);
+            var texts = Ui.VStack(1, title, sub);
+            texts.Margin = new Thickness(12, 0, 0, 0);
+            texts.VerticalAlignment = VerticalAlignment.Center;
+            var settings = Ui.RoundButton("", 13, () => IslandWindow.Open("ms-settings:bluetooth"), 32, Ui.Br(Colors.White, 24), Ui.White);
+            settings.ToolTip = "Bluetooth-Einstellungen";
+            settings.VerticalAlignment = VerticalAlignment.Center;
             var head = new Grid();
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetColumn(sw, 1);
-            head.Children.Add(texts);
-            head.Children.Add(sw);
+            Grid.SetColumn(texts, 1); Grid.SetColumn(settings, 2);
+            head.Children.Add(toggle); head.Children.Add(texts); head.Children.Add(settings);
             root.Children.Add(head);
 
-            // Gekoppelte Geräte
-            var list = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-            if (!loaded)
-                list.Children.Add(Ui.Text("Suche Geräte …", 12.5, Ui.Dim, false));
-            else if (devices.Count == 0)
-                list.Children.Add(Ui.Text("Noch keine Geräte gekoppelt", 12.5, Ui.Dim, false));
-            foreach (var d in devices.Take(MaxRows))
+            // Geräte als Kacheln (2 Spalten): verbunden = blauer Kreis, sonst grau
+            var label = Ui.Text("GERÄTE", 10.5, Ui.Dim, true);
+            label.Margin = new Thickness(2, 14, 0, 6);
+            root.Children.Add(label);
+            var grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
+            if (!loaded) root.Children.Add(Ui.Text("Suche Geräte …", 12.5, Ui.Dim, false));
+            else if (devices.Count == 0) root.Children.Add(Ui.Text("Noch keine Geräte gekoppelt", 12.5, Ui.Dim, false));
+            foreach (var d in devices.Take(4))
             {
-                var row = new Border
+                int? bat = d.connected ? host.BtBatteryOf(d.name) : null;
+                var circle = new Border
                 {
-                    Height = 38,
-                    CornerRadius = new CornerRadius(12),
-                    Background = Ui.Card,
-                    Margin = new Thickness(0, 0, 0, 6),
-                    Padding = new Thickness(12, 0, 12, 0),
-                    Cursor = Cursors.Hand
+                    Width = 30, Height = 30, CornerRadius = new CornerRadius(15),
+                    Background = d.connected ? blue : Ui.Br(Colors.White, 30),
+                    Child = Ui.Glyph(DeviceGlyph(d.cls, d.name), 13, Ui.White),
+                    VerticalAlignment = VerticalAlignment.Center
                 };
-                var name = Ui.Text(d.name, 13, Ui.White, false);
+                var name = Ui.Text(d.name, 13, Ui.White, d.connected);
                 name.TextTrimming = TextTrimming.CharacterEllipsis;
-                name.Margin = new Thickness(10, 0, 8, 0);
-                var state = Ui.Text(d.connected ? "Verbunden" : "Nicht verbunden", 12, d.connected ? Ui.Br(Ui.Green) : Ui.Dim, false);
-                var g = new Grid { VerticalAlignment = VerticalAlignment.Center };
+                var state = Ui.Text(d.connected ? (bat.HasValue ? $"Verbunden · {bat} %" : "Verbunden") : "Nicht verbunden", 11, d.connected ? Ui.Br(Color.FromRgb(0x64, 0xB5, 0xFF)) : Ui.Dim, false);
+                var nt = Ui.VStack(0, name, state);
+                nt.Margin = new Thickness(9, 0, 4, 0);
+                nt.VerticalAlignment = VerticalAlignment.Center;
+                var g = new Grid();
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                Grid.SetColumn(name, 1);
-                Grid.SetColumn(state, 2);
-                g.Children.Add(Ui.Glyph(DeviceGlyph(d.cls, d.name), 14, d.connected ? Ui.White : Ui.Dim));
-                g.Children.Add(name);
-                g.Children.Add(state);
-                row.Child = g;
-                row.MouseEnter += (s, e) => row.Background = Ui.CardHover;
-                row.MouseLeave += (s, e) => row.Background = Ui.Card;
-                Ui.Pressable(row, 0.98);
-                row.MouseLeftButtonDown += (s, e) => e.Handled = true;
-                row.MouseLeftButtonUp += (s, e) => { e.Handled = true; IslandWindow.Open("ms-settings:bluetooth"); };
-                list.Children.Add(row);
+                Grid.SetColumn(nt, 1);
+                g.Children.Add(circle); g.Children.Add(nt);
+                var tile = new Border
+                {
+                    Height = 48, CornerRadius = new CornerRadius(14), Margin = new Thickness(0, 0, 6, 6),
+                    Padding = new Thickness(9, 0, 9, 0), Background = d.connected ? Ui.Br(Color.FromRgb(0x0A, 0x84, 0xFF), 38) : Ui.Card,
+                    Cursor = Cursors.Hand, Child = g, ToolTip = d.name
+                };
+                var baseBg = tile.Background;
+                tile.MouseEnter += (s, e) => tile.Background = Ui.CardHover;
+                tile.MouseLeave += (s, e) => tile.Background = baseBg;
+                Ui.Pressable(tile, 0.97);
+                tile.MouseLeftButtonDown += (s, e) => e.Handled = true;
+                tile.MouseLeftButtonUp += (s, e) => { e.Handled = true; IslandWindow.Open("ms-settings:bluetooth"); };
+                grid.Children.Add(tile);
             }
-            root.Children.Add(list);
+            root.Children.Add(grid);
 
-            // Unten: Einstellungen / Gerät hinzufügen
-            var links = Ui.HStack(18,
-                Ui.Link("Einstellungen", () => IslandWindow.Open("ms-settings:bluetooth"), 12.5),
-                Ui.Link("Gerät hinzufügen", () => IslandWindow.Open("ms-settings-connectabledevices:devicediscovery"), 12.5),
-                Ui.Link("Aktualisieren", Reload, 12.5));
-            links.Margin = new Thickness(2, devices.Count > MaxRows ? 2 : 6, 0, 0);
-            if (devices.Count > MaxRows)
-                root.Children.Add(Ui.Text($"+ {devices.Count - MaxRows} weitere", 11.5, Ui.Dim, false));
+            // unten: schlichte Links wie im Apple-Menü
+            var links = Ui.HStack(16,
+                Ui.Link("Gerät hinzufügen …", () => IslandWindow.Open("ms-settings-connectabledevices:devicediscovery"), 12),
+                Ui.Link(devices.Count > 4 ? $"Alle {devices.Count} Geräte …" : "Aktualisieren", devices.Count > 4 ? (Action)(() => IslandWindow.Open("ms-settings:bluetooth")) : Reload, 12));
+            links.Margin = new Thickness(2, 2, 0, 0);
             root.Children.Add(links);
             return root;
         }

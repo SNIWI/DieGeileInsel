@@ -49,59 +49,58 @@ namespace DynamicIsland
             shownKey = Key;
             var root = new StackPanel { Margin = new Thickness(22, 16, 22, 12) };
 
-            // ---------- Kopfzeile ----------
-            var title = Ui.Text(d?.Name ?? "Kopfhörer", 17, Ui.White);
-            title.TextTrimming = TextTrimming.CharacterEllipsis;
-            var sub = Ui.Text(d == null ? "Nicht verbunden" : "Verbunden" + (IsOutput(d) ? " · Ton läuft hier" : ""), 12.5, Ui.Dim, false);
-            sub.TextTrimming = TextTrimming.CharacterEllipsis;
-            var texts = Ui.VStack(2, title, sub);
-            texts.VerticalAlignment = VerticalAlignment.Center;
-            var bt = Ui.RoundButton("", 14, () => host.ShowBluetooth(true), 34, Ui.Faint);
-            bt.ToolTip = "Andere Bluetooth-Geräte";
-            var set = Ui.RoundButton("", 14, () => IslandWindow.Open("ms-settings:bluetooth"), 34, Ui.Faint);
-            set.ToolTip = "Bluetooth-Einstellungen";
-            var btns = Ui.HStack(8, bt, set);
-            btns.VerticalAlignment = VerticalAlignment.Center;
-            var head = new Grid();
-            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetColumn(btns, 1);
-            head.Children.Add(texts);
-            head.Children.Add(btns);
-            root.Children.Add(head);
-
-            // ---------- Karten: Akku | Ausgabe ----------
-            var cards = new Grid { Margin = new Thickness(0, 10, 0, 0), Height = 58 };
-            cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
+            // ---------- Apple-Stil: großer Akku-Ring links, Name + Status + Ton-Knopf rechts ----------
             int? bat = d?.Battery;
-            batText = Ui.Text(bat.HasValue ? bat.Value + " %" : "–", 18, Ui.White, true, true);
-            var batBar = new Bar(3, Ui.Br(bat.HasValue && bat.Value <= 20 ? Ui.Red : Ui.Green)) { Margin = new Thickness(0, 5, 0, 0), Value = (bat ?? 0) / 100.0 };
-            if (!bat.HasValue) batBar.Visibility = Visibility.Hidden;
-            var batLbl = Ui.HStack(5, Ui.Glyph(Glyph, 11, Ui.Dim), Ui.Text(bat.HasValue ? "Akku" : "Akku (meldet das Gerät nicht)", 11.5, Ui.Dim, false));
-            var batCard = Card(Ui.VStack(0, batLbl, batText, batBar));
-            batCard.Margin = new Thickness(0, 0, 4, 0);
-            cards.Children.Add(batCard);
+            var ringColor = bat.HasValue && bat.Value <= 20 ? Ui.Red : Ui.Green;
+            var ring = new RingGauge((bat ?? 0) / 100.0, ringColor, 96, 6, bat.HasValue ? null : "–");
+            var ringBox = new Grid { VerticalAlignment = VerticalAlignment.Center };
+            ringBox.Children.Add(ring);
+            var hpIcon = Ui.Glyph(Glyph, 13, Ui.Dim);
+            hpIcon.HorizontalAlignment = HorizontalAlignment.Center;
+            hpIcon.VerticalAlignment = VerticalAlignment.Top;
+            hpIcon.Margin = new Thickness(0, 22, 0, 0);
+            ringBox.Children.Add(hpIcon);
+            batText = Ui.Text("", 1, Ui.White);   // (Akku steht im Ring)
 
+            var title = Ui.Text(d?.Name ?? "Kopfhörer", 18, Ui.White);
+            title.TextTrimming = TextTrimming.CharacterEllipsis;
             bool here = IsOutput(d);
-            outText = Ui.Text(here ? "Aktiv" : "Hierher", 18, here ? Ui.Br(Ui.Green) : Ui.White, true);
-            var outLbl = Ui.HStack(5, Ui.Glyph("", 11, Ui.Dim), Ui.Text("Ton-Ausgabe", 11.5, Ui.Dim, false));
-            var outSub = Ui.Text(here ? "Ton läuft hier" : "Antippen zum Wechseln", 11, Ui.Dim, false);
-            outCard = Card(Ui.VStack(0, outLbl, outText, outSub));
-            outCard.Margin = new Thickness(4, 0, 0, 0);
-            Grid.SetColumn(outCard, 1);
+            var sub = Ui.Text(d == null ? "Nicht verbunden" : bat.HasValue ? $"Verbunden · Akku {bat} %" : "Verbunden", 12.5, Ui.Dim, false);
+            sub.TextTrimming = TextTrimming.CharacterEllipsis;
+
+            // Ton-Ausgabe als Kapsel (wie „Ton auf AirPods“ beim iPhone)
+            outText = Ui.Text(here ? "Ton läuft hier" : "Ton hierher holen", 12.5, here ? Ui.Br(Ui.Green) : Ui.White, true);
+            outCard = new Border
+            {
+                CornerRadius = new CornerRadius(15), Padding = new Thickness(12, 6, 14, 7), HorizontalAlignment = HorizontalAlignment.Left,
+                Background = here ? Ui.Br(Ui.Green, 40) : Ui.Br(Colors.White, 26), Margin = new Thickness(0, 10, 0, 0),
+                Child = Ui.HStack(6, Ui.Glyph("", 12, here ? Ui.Br(Ui.Green) : Ui.White), outText)
+            };
             if (!here && d != null)
             {
                 outCard.Cursor = Cursors.Hand;
-                outCard.MouseEnter += (s, e) => outCard.Background = Ui.CardHover;
-                outCard.MouseLeave += (s, e) => outCard.Background = Ui.Card;
-                Ui.Pressable(outCard, 0.97);
+                Ui.Pressable(outCard, 0.95);
                 outCard.MouseLeftButtonDown += (s, e) => e.Handled = true;
                 outCard.MouseLeftButtonUp += async (s, e) => { e.Handled = true; await MakeOutputAsync(d.Name); };
             }
-            cards.Children.Add(outCard);
-            root.Children.Add(cards);
+
+            var bt = Ui.RoundButton("", 13, () => host.ShowBluetooth(true), 32, Ui.Br(Colors.White, 24), Ui.White);
+            bt.ToolTip = "Andere Bluetooth-Geräte";
+            var set = Ui.RoundButton("", 13, () => IslandWindow.Open("ms-settings:bluetooth"), 32, Ui.Br(Colors.White, 24), Ui.White);
+            set.ToolTip = "Bluetooth-Einstellungen";
+            var btns = Ui.HStack(6, bt, set);
+            btns.VerticalAlignment = VerticalAlignment.Top;
+
+            var info = Ui.VStack(1, title, sub, outCard);
+            info.VerticalAlignment = VerticalAlignment.Center;
+            info.Margin = new Thickness(18, 0, 8, 0);
+            var head = new Grid();
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(info, 1); Grid.SetColumn(btns, 2);
+            head.Children.Add(ringBox); head.Children.Add(info); head.Children.Add(btns);
+            root.Children.Add(head);
 
             // ---------- Lautstärke ----------
             var vg = new Grid { Margin = new Thickness(0, 12, 0, 0) };

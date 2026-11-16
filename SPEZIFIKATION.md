@@ -1,6 +1,6 @@
 # Spezifikation – Die Geile Insel (Dynamic Island für Windows)
 
-> Stand: 16.11.2026 · Sprache der App: Deutsch · Plattform: Windows 10 (19041+) / Windows 11
+> Stand: 16.11.2026 (aktualisiert) · Sprache der App: Deutsch · Plattform: Windows 10 (19041+) / Windows 11
 
 ---
 
@@ -89,11 +89,11 @@ flowchart LR
 
 | Zustand | Beschreibung |
 |---|---|
-| Leerlauf | Kleine Pille (124×30) oder dünner Strich (Einstellung) |
+| Leerlauf | Pille mit **Uhrzeit links und Wetter rechts** (ohne Wetter: Akku/Datum) oder dünner Strich (Einstellung) |
 | Kompakt | Pille mit Symbol links, Inhalt rechts (z. B. Cover + Visualizer, Timer-Ring + Restzeit) |
 | Kreis | Zweite Aktivität als 36-px-Kreis neben der Pille; Claude zeigt Ring + Dauer, beim Drüberfahren breit mit Text |
-| Banner | Größere Pille mit Titel + Untertitel (Nachrichten, Geräte, Termine) |
-| Spotlight | „App im Vordergrund“: Pille wird länger, großes App-Symbol im leuchtenden Kreis, Inhalt daneben |
+| Banner | Pille mit Titel + Untertitel (Nachrichten, Geräte, Termine); „klein“: 50 px hoch, max. 360 px breit |
+| Spotlight | „App im Vordergrund“: App-Symbol im leuchtenden Kreis, Inhalt daneben; „klein“ (Standard): eine Zeile in Pillenhöhe, „groß“: zwei Zeilen, großes Symbol |
 | Große Island | Seiten mit Seitensymbolen oben, Katzen-Kratzbaum rechts (optional) |
 
 **Größe der großen Island:** Grundmaß 420×232, skaliert mit `PageScale` (0,7–1) und verbreitert mit `PageWide` (1–1,45). Inhalt bekommt mehr Breite, wird nicht verzerrt. `Scale` vergrößert/verkleinert alles.
@@ -135,12 +135,21 @@ flowchart LR
 
 ## 6. Ein- und Ausblenden
 
-Die Island fährt nach `HideDelay` Sekunden (Standard 3 s) nach oben weg, **außer**:
+Die Island fährt nach `HideDelay` Sekunden (Standard 3 s) **komplett** nach oben weg, **außer**:
 - ein **Hinweis** läuft (Nachricht, „fertig“-Meldung, Spotlight, Sprachmemo),
-- die Maus liegt darauf oder am oberen Rand, eine Taste ist gedrückt, ein Menü oder die Einstellungen sind offen,
-- die große Island ist aufgeklappt.
+- die Maus liegt darauf oder am oberen Rand, eine Taste ist gedrückt, ein Menü ist offen,
+- das Einstellungsfenster ist **aktiv** (im Hintergrund hält es die Island nicht mehr fest),
+- die große Island ist aufgeklappt – sie klappt nach **6 s ohne Maus darauf** von selbst zu und fährt weg.
 
-Laufende Aktivitäten (Claude arbeitet, Timer, Musik, Songwechsel) holen die Island **nicht** hervor. Bei Vollbild (Spiel/Video) auf demselben Bildschirm blendet sie sich ganz aus (abschaltbar). Hängende Zustände (verpasstes MouseLeave, Menü ohne „Closed“) werden alle 0,5 s bereinigt.
+Nur **Hinweise** und der Nutzer selbst holen die Island hervor. Laufende Aktivitäten (Claude arbeitet, Timer, Musik, Songwechsel, Seitenaufrufe) tun das **nicht**. Bei Vollbild (Spiel/Video) auf demselben Bildschirm blendet sie sich ganz aus (abschaltbar). Hängende Zustände (verpasstes MouseLeave, Menü ohne „Closed“) werden alle 0,5 s bereinigt.
+
+### 6.1 Mehrere Hinweise gleichzeitig
+Hinweise werden **gestaffelt** gezeigt statt sich zu überdecken:
+- Läuft schon ein Hinweis, stellt sich ein neuer in eine **Warteschlange** und erscheint danach mit seiner vollen Anzeigezeit.
+- Ein **wichtigerer** Hinweis (laut Prioritätsliste) unterbricht einen weniger wichtigen; der unterbrochene kommt mit seiner Restzeit (min. 2 s) zurück.
+- Gleicher Hinweis-Typ ersetzt sich (z. B. zweimal „Kopiert“); Einträge älter als 90 s verfallen.
+- Kurze Systemanzeigen (Lautstärke, Feststelltaste, Discord-Mikro) laufen außerhalb der Schlange.
+- **Prioritätsliste** (einstellbar, ↑/↓): Anrufe · Nachrichten · Claude · Termine & Erinnerungen · Timer · Downloads & Spiele · Geräte · Kopieren · Sonstiges.
 
 ---
 
@@ -194,6 +203,8 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 - **Antworten:** Eingabefeld in der Island → App wird aktiviert, Chat geöffnet (WhatsApp: Suche; Discord-DM: Direktlink; Server-Kanal: Schnellsuche), Text eingefügt und – wenn erlaubt – gesendet. Andere Apps: nur einfügen.
 
 ### 8.6 Geräte
+- **Bluetooth-Seite (Apple-Stil):** runder Bluetooth-Knopf als Schalter (blau = an), Status „An · 1 Gerät verbunden“, Zahnrad zu den Einstellungen; Geräte als Kacheln in zwei Spalten (verbunden = blauer Kreis + „Verbunden · 80 %“).
+- **Kopfhörer-Seite:** großer Akku-Ring links, Name + Status rechts, Kapsel „Ton läuft hier“ / „Ton hierher holen“, Lautstärkeregler; keine Wiedergabe-Knöpfe.
 - **AirPods:** BLE-Erkennung (Akku, Case, Ohrerkennung), Auto-Pause/-Weiter, Auto-Umschalten, AAP-Verbindung (ANC/Transparenz). Case-Popup nur bei gekoppelten eigenen AirPods.
 - **Bluetooth/USB/Controller:** Meldung mit Akku-Ring; pro Gerät höchstens alle 3 h und nur nach ≥ 20 min Abwesenheit (verhindert Flackern bei Standby-Kopfhörern).
 
@@ -202,7 +213,9 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 - **Spiele:** Steam (`appmanifest_*.acf`: Bytes, StateFlags) mit Prozent, Geschwindigkeit, Restzeit; Epic ohne Prozent.
 
 ### 8.8 Werkzeuge
-Timer (Ring-Design, +1/+5, Endzeit), Pomodoro (25/5/15), Stoppuhr mit Runden, Sprachmemos, Zwischenablage-Verlauf (25 Einträge, nur im Speicher, Passwörter verdeckt), App-Wechsler, Helligkeit (DDC/CI + intern), Kurzbefehle, Texterkennung (OCR) per Mittelklick oder Hotkey, Gemini-Chat.
+**Timer-Auswahl** wie in der iPhone-Uhr: drei Drehräder (Std · Min · Sek) mit Auswahlband (Mausrad, Ziehen, Antippen), Schnellwahl (1–30 Min, Pomodoro), runde Knöpfe „Abbrechen“/„Start“; letzte Dauer wird gemerkt.
+**Laufender Timer:** Ring, der sich leert (Pille, Kreis und groß), ruhige Ziffern, „Endet um …“, +1/+5/Pause/Beenden.
+Pomodoro (25/5/15), Stoppuhr mit Runden, Sprachmemos, Zwischenablage-Verlauf (25 Einträge, nur im Speicher, Passwörter verdeckt), App-Wechsler, Helligkeit (DDC/CI + intern), Kurzbefehle, Texterkennung (OCR) per Mittelklick oder Hotkey, Gemini-Chat.
 
 ### 8.9 Katzen
 - Bis zu 4 Katzen: Vorlage (9 Rassen), Fell-/Augenfarbe, Muster, Flauschig, Zubehör (+Farbe), Größe, Charakter; optional eigenes Foto.
@@ -211,7 +224,12 @@ Timer (Ring-Design, +1/+5, Endzeit), Pomodoro (25/5/15), Stoppuhr mit Runden, Sp
 - Eine Vorlage zu wählen setzt eigene Farben/Muster zurück.
 
 ### 8.10 Animationen
-Pro Ereignis wählbar (*Einstellungen → Animationen*): **Aus · App · Leuchten · Hüpfen · Beides**, mit Tester (▶) und „Schnell einstellen“.
+Pro Ereignis wählbar (*Einstellungen → Animationen*): **Aus · App · App + Licht · Licht · Hüpfen · Licht + Hüpfen**, mit Tester (▶) und „Schnell einstellen“.
+
+- **Farbe pro Ereignis:** Farbpunkt anklicken → Standard oder eine von 10 Farben; gilt für Symbol, Kreis und Licht.
+- **Licht-Effekte** (Standard + pro Ereignis überschreibbar): **Umlauf** (Lichtstreifen läuft einmal um die Island), **Schein** (weicher Schimmer dahinter), **Glanz** (Reflex zieht über die Island), **Rahmen** (Rand leuchtet zweimal). Das Licht hat immer die Farbe des Ereignisses.
+- **Erscheinen von Hinweisen:** **Schieben** (Standard: Island wird sanft länger, Inhalt gleitet herein, ohne Federn), **Tropfen** (federnder Apple-Morph), **Ohne**.
+- **Größe der Hinweise:** **Klein & schlicht** (Standard) oder **Groß**.
 
 | Ereignis | Spotlight-Inhalt |
 |---|---|
@@ -251,7 +269,8 @@ Gespeichert in `%APPDATA%\DynamicIsland\einstellungen.json`. Gruppen (Auswahl):
 | Größe & Position | `PageScale`, `PageWide`, `Scale`, `PosX`, `PosY`, `MonitorName` |
 | Aussehen | `AccentColor`, `NavIconsColor`, `IdlePill`, `Material`, `GlassTint`, `SpotifyColor` |
 | Ausblenden | `AutoHide`, `HideWithActivities`, `HideDelay`, `HideInFullscreen` |
-| Animationen | `AnimModes` (Ereignis → Art) |
+| Animationen | `AnimModes` (Ereignis → Art), `AnimColors`, `GlowStyle`, `GlowStyles`, `AlertSize`, `AlertMotion`, `AlertPriority` |
+| Timer | `LastTimerSeconds` |
 | Seiten | `Pages`, `WidgetPages`, `DashboardTiles` |
 | Hinweise | `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads` |
 | Katzen | `CatsMode` (`expanded`/`always`/`off`), `CatsStayVisible`, `Cats` |
@@ -298,6 +317,7 @@ DynamicIsland/
 │  ├─ SpotifyPlayer.cs     Spotify-Player, Geräte-/Playlist-Liste
 │  ├─ PlayerUi.cs          Gemeinsames Player-Layout + Animationen
 │  ├─ Spotlight.cs         „App im Vordergrund“
+│  ├─ TimerPicker.cs       Timer-Auswahl (Drehräder wie iPhone-Uhr)
 │  ├─ CalendarActivity.cs  Seite „Heute“ (Wetter + Termine)
 │  ├─ WeatherActivity.cs   Wetter-Widget
 │  ├─ TodoActivity.cs, AiActivity.cs, Panels.cs, Widgets.cs

@@ -250,53 +250,86 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             ? Ui.Glyph(Emoji, size, Ui.Br(Color), Ui.EmojiFont)
             : Ui.Glyph("", size, Ui.Br(Color));
 
-        public override double CompactWidth => 220;
-        public override Size ExpandedSize => new Size(380, 166);
+        // Wie der iPhone-Timer: Ring, der sich leert, große ruhige Ziffern
+        TimerRing cRing, mRing, eRing;
+        TextBlock eEnd;
+
+        public override double CompactWidth => 200;
+        public override Size ExpandedSize => new Size(420, 200);
+
+        static TextBlock Digits(double size, Brush b)
+        {
+            var t = Ui.Text("", size, b, true, true);
+            t.FontFamily = Ui.TextFont;
+            System.Windows.Documents.Typography.SetNumeralAlignment(t, FontNumeralAlignment.Tabular);   // Ziffern springen nicht hin und her
+            return t;
+        }
 
         public override FrameworkElement BuildCompact()
         {
-            cTime = Ui.Text("", 14, Ui.Br(Color), true, true);
-            var g = Ui.Row3(Ui.HStack(7, Icon(15), Ui.Text(Label, 12.5, Ui.Dim, false)), null, cTime, new Thickness(13, 0, 15, 0));
+            cRing = new TimerRing(20, 2.6, Color) { VerticalAlignment = VerticalAlignment.Center };
+            cTime = Digits(15, Ui.Br(Color));
+            var label = Ui.Text(Label, 12.5, Ui.Dim, false, true);
+            label.Margin = new Thickness(8, 0, 0, 0);
+            label.VerticalAlignment = VerticalAlignment.Center;
+            var g = Ui.Row3(Ui.HStack(0, cRing, label), null, cTime, new Thickness(10, 0, 15, 0));
             Refresh();
             return g;
         }
 
         public override FrameworkElement BuildMinimal()
         {
-            mText = Ui.Text("", 11, Ui.Br(Color), true, true);
+            mRing = new TimerRing(28, 2.6, Color);
+            mText = Digits(10, Ui.Br(Color));
+            mText.HorizontalAlignment = HorizontalAlignment.Center;
+            mText.VerticalAlignment = VerticalAlignment.Center;
+            mRing.Children.Add(mText);
             Refresh();
-            return mText;
+            return mRing;
         }
 
         public override FrameworkElement BuildExpanded()
         {
-            var root = new StackPanel { Margin = new Thickness(20, 18, 20, 14) };
-            var top = new Grid();
-            top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var circle = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(22), Background = Ui.Br(Color, 55), Child = Icon(20) };
-            eSub = Ui.Text("", 12.5, Ui.Dim, false);
-            var texts = Ui.VStack(2, Ui.Text(Label, 15.5, Ui.White), eSub);
-            texts.Margin = new Thickness(12, 0, 8, 0);
-            eTime = Ui.Text("", 32, Ui.Br(Color), true, true);
-            Grid.SetColumn(circle, 0); Grid.SetColumn(texts, 1); Grid.SetColumn(eTime, 2);
-            top.Children.Add(circle); top.Children.Add(texts); top.Children.Add(eTime);
-            root.Children.Add(top);
+            // links: großer Ring mit der Restzeit, rechts: Name, Endzeit, Knöpfe
+            eRing = new TimerRing(132, 7, Color) { VerticalAlignment = VerticalAlignment.Center };
+            eTime = Digits(30, Ui.White);
+            eTime.HorizontalAlignment = HorizontalAlignment.Center;
+            eTime.VerticalAlignment = VerticalAlignment.Center;
+            eRing.Children.Add(eTime);
 
-            eBar = new Bar(5, Ui.Br(Color)) { Margin = new Thickness(0, 14, 0, 0) };
-            root.Children.Add(eBar);
+            var icon = new Border { Width = 30, Height = 30, CornerRadius = new CornerRadius(15), Background = Ui.Br(Color, 55), Child = Icon(15) };
+            var title = Ui.Text(Label, 18, Ui.White, true, true);
+            title.Margin = new Thickness(10, 0, 0, 0);
+            title.VerticalAlignment = VerticalAlignment.Center;
+            var head = Ui.HStack(0, icon, title);
+            eEnd = Ui.Text("", 13, Ui.Dim, false);
+            eEnd.Margin = new Thickness(0, 6, 0, 0);
+            eSub = Ui.Text("", 12, Ui.Br(Color), false);
+            eSub.Margin = new Thickness(0, 2, 0, 0);
 
-            var play = Ui.RoundButton("", 18, TogglePause, 44, Ui.Br(Color, 70));
+            var play = Ui.RoundButton("", 20, TogglePause, 50, Ui.Br(Color, 75));
             ePlay = (TextBlock)play.Child;
-            var plus = Ui.RoundButton("+1", 13, AddMinute, 44, Ui.Faint, Ui.White, Ui.TextFont);
-            var stop = Ui.RoundButton("", 15, Cancel, 44, Ui.Faint);
-            var btns = Ui.HStack(16, plus, play, stop);
-            btns.HorizontalAlignment = HorizontalAlignment.Center;
-            btns.Margin = new Thickness(0, 12, 0, 0);
-            root.Children.Add(btns);
+            var plus1 = Ui.RoundButton("+1", 13, AddMinute, 42, Ui.Faint, Ui.White, Ui.TextFont);
+            plus1.ToolTip = "1 Minute mehr";
+            var plus5 = Ui.RoundButton("+5", 13, () => { for (int i = 0; i < 5; i++) AddMinute(); }, 42, Ui.Faint, Ui.White, Ui.TextFont);
+            plus5.ToolTip = "5 Minuten mehr";
+            var stop = Ui.RoundButton("", 15, Cancel, 42, Ui.Br(Ui.Red, 60), Ui.Br(Ui.Red));
+            stop.ToolTip = "Timer beenden";
+            var btns = Ui.HStack(12, plus1, plus5, play, stop);
+            btns.Margin = new Thickness(0, 16, 0, 0);
+
+            var right = Ui.VStack(0, head, eEnd, eSub, btns);
+            right.VerticalAlignment = VerticalAlignment.Center;
+            right.Margin = new Thickness(24, 0, 0, 0);
+
+            var g = new Grid { Margin = new Thickness(24, 12, 24, 12) };
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(right, 1);
+            g.Children.Add(eRing);
+            g.Children.Add(right);
             Refresh();
-            return root;
+            return g;
         }
 
         public override void Update()
@@ -314,11 +347,14 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
         {
             var r = Remaining;
             var txt = Ui.Fmt(r + TimeSpan.FromMilliseconds(999));
+            double left = total.TotalSeconds > 0 ? Math.Max(0, Math.Min(1, r.TotalSeconds / total.TotalSeconds)) : 0;
             if (cTime != null) cTime.Text = txt;
             if (eTime != null) eTime.Text = txt;
-            if (eSub != null) eSub.Text = (paused ? "Pausiert · " : "") + "von " + Ui.Fmt(total);
+            cRing?.Set(left, paused); mRing?.Set(left, paused); eRing?.Set(left, paused);
+            if (eEnd != null) eEnd.Text = paused ? "Pausiert" : "Endet um " + (DateTime.Now + r).ToString("HH:mm") + " Uhr";
+            if (eSub != null) eSub.Text = "von " + Ui.Fmt(total);
             if (ePlay != null) ePlay.Text = paused ? "" : "";
-            if (eBar != null) eBar.Value = total.TotalSeconds > 0 ? 1 - r.TotalSeconds / total.TotalSeconds : 1;
+            if (eBar != null) eBar.Value = 1 - left;
             if (mText != null) mText.Text = r.TotalMinutes >= 1 ? $"{(int)Math.Ceiling(r.TotalMinutes)}m" : $"{(int)Math.Ceiling(r.TotalSeconds)}s";
         }
 
@@ -341,6 +377,43 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
         {
             Finished = true;
             Host?.Relayout();
+        }
+    }
+
+    /// <summary>Ring, der sich leert (Restzeit). Pausiert: blasser.</summary>
+    public sealed class TimerRing : Grid
+    {
+        readonly double size, thick;
+        readonly System.Windows.Shapes.Path arc;
+        readonly System.Windows.Shapes.Ellipse track;
+        readonly Color color;
+        double shown = -1;
+        bool shownPaused;
+
+        public TimerRing(double size, double thickness, Color color)
+        {
+            this.size = size; thick = thickness; this.color = color;
+            Width = size; Height = size;
+            track = new System.Windows.Shapes.Ellipse { Stroke = Ui.Br(color, 50), StrokeThickness = thickness };
+            arc = new System.Windows.Shapes.Path { Stroke = Ui.Br(color), StrokeThickness = thickness, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round };
+            Children.Add(track);
+            Children.Add(arc);
+        }
+
+        public void Set(double fraction, bool paused)
+        {
+            if (Math.Abs(fraction - shown) < 0.0015 && paused == shownPaused) return;
+            shown = fraction; shownPaused = paused;
+            arc.Opacity = paused ? 0.45 : 1;
+            double r = (size - thick) / 2, c = size / 2;
+            if (fraction >= 0.999) { arc.Data = new EllipseGeometry(new Point(c, c), r, r); return; }
+            if (fraction <= 0.001) { arc.Data = null; return; }
+            double a = fraction * 2 * Math.PI;   // von oben im Uhrzeigersinn
+            var start = new Point(c, c - r);
+            var end = new Point(c + r * Math.Sin(a), c - r * Math.Cos(a));
+            var fig = new PathFigure { StartPoint = start, IsClosed = false };
+            fig.Segments.Add(new ArcSegment(end, new Size(r, r), 0, fraction > 0.5, SweepDirection.Clockwise, true));
+            arc.Data = new PathGeometry(new[] { fig });
         }
     }
 
@@ -558,13 +631,19 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             Id = "clock";
         }
 
-        public override double CompactWidth => 230;
+        // Steht auch in der Leerlauf-Pille: Uhrzeit links, Wetter (oder Akku/Datum) rechts
+        public override double CompactWidth => 200;
+
+        TextBlock wIcon;
 
         public override FrameworkElement BuildCompact()
         {
             time = Ui.Text("", 13.5, Ui.White, true, true);
-            right = Ui.Text("", 12.5, Ui.Dim, false);
-            var g = Ui.Row3(Ui.HStack(7, Ui.Glyph("", 13, Ui.Dim), time), null, right, new Thickness(14, 0, 15, 0));
+            right = Ui.Text("", 12.5, Ui.Dim, false, true);
+            wIcon = Ui.Glyph("", 13, Ui.Dim, Ui.EmojiFont);
+            wIcon.Margin = new Thickness(0, 0, 5, 0);
+            wIcon.VerticalAlignment = VerticalAlignment.Center;
+            var g = Ui.Row3(time, null, Ui.HStack(0, wIcon, right), new Thickness(16, 0, 16, 0));
             Update();
             return g;
         }
@@ -575,9 +654,20 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             var now = DateTime.Now;
             var st = host.Settings;
             time.Text = ClockFormat.Time(st, now);
-            right.Text = st.ClockBattery && host.HasBattery && host.BatteryPct >= 0
-                ? $"{host.BatteryPct} %{(host.OnAc ? " ⚡" : "")}"
-                : ClockFormat.Date(st, now);
+            var w = host.Weather;
+            if (w != null && w.HasData && st.WeatherEnabled)
+            {
+                wIcon.Visibility = Visibility.Visible;
+                wIcon.Text = WeatherService.Emoji(w.Code, w.IsDay);
+                right.Text = WeatherService.Deg(w.Temp);
+            }
+            else
+            {
+                wIcon.Visibility = Visibility.Collapsed;
+                right.Text = st.ClockBattery && host.HasBattery && host.BatteryPct >= 0
+                    ? $"{host.BatteryPct} %{(host.OnAc ? " ⚡" : "")}"
+                    : ClockFormat.Date(st, now);
+            }
         }
     }
 
