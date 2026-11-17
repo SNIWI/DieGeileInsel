@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -94,7 +94,7 @@ namespace DynamicIsland
         public override bool CanExpand => Expandable;
         // Banner (Nachrichten, Geräte …): bei „klein“ flacher und schmaler
         public override double CompactWidth => Banner ? (Ui.CompactAlerts ? Math.Min(Math.Max(CompactW, 300), 360) : Math.Max(CompactW, 350)) : CompactW;
-        public override double CompactHeight => Banner ? (Ui.CompactAlerts ? 50 : 70) : 36;
+        public override double CompactHeight => Banner ? AlertLook.BannerHeight : 36;
 
         public override Size ExpandedSize
         {
@@ -153,16 +153,12 @@ namespace DynamicIsland
 
         FrameworkElement BuildBanner()
         {
-            bCircle = new Border
-            {
-                Width = Ui.CompactAlerts ? 32 : 42, Height = Ui.CompactAlerts ? 32 : 42,
-                CornerRadius = new CornerRadius(Ui.CompactAlerts ? 16 : 21),
-                Background = Ui.Br(Accent, 55),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            cIcon = Ui.Glyph(Glyph, Ui.CompactAlerts ? 15 : 19, Acc(), GlyphFont);
+            // Symbol-Fläche je nach Design (Kreis, abgerundetes Quadrat, keine) – siehe AlertLook
+            bCircle = new Border { VerticalAlignment = VerticalAlignment.Center };
+            AlertLook.StyleBox(bCircle, Accent, AlertLook.BannerIcon);
+            cIcon = Ui.Glyph(Glyph, AlertLook.D == "minimal" ? 16 : Ui.CompactAlerts ? 15 : 19, Acc(), GlyphFont);
             bCircle.Child = cIcon;
-            bTitle = Ui.Text(Title, Ui.CompactAlerts ? 13.5 : 14.5, Ui.White);
+            bTitle = Ui.Text(Title, Ui.CompactAlerts ? 13.5 : 14.5, AlertLook.TitleBrush(Accent, null));
             bTitle.TextTrimming = TextTrimming.CharacterEllipsis;
             bSub = Ui.Text(Subtitle, Ui.CompactAlerts ? 11.5 : 12, Ui.Dim, false);
             bSub.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -172,14 +168,15 @@ namespace DynamicIsland
                 cBar = new Bar(4, Acc()) { Margin = new Thickness(0, 6, 0, 0) };
                 texts.Children.Add(cBar);
             }
-            texts.Margin = new Thickness(11, 0, 8, 0);
+            texts.Margin = new Thickness(AlertLook.D == "minimal" ? 7 : 11, 0, 8, 0);
+            if (AlertLook.D == "minimal") { bSub.Visibility = string.IsNullOrEmpty(Subtitle) ? Visibility.Collapsed : Visibility.Visible; texts.Orientation = Orientation.Horizontal; bSub.Margin = new Thickness(8, 1, 0, 0); bSub.VerticalAlignment = bTitle.VerticalAlignment = VerticalAlignment.Center; }
             UIElement right;
             if (Buttons.Count > 0) right = ButtonsPanel(Ui.CompactAlerts ? 30 : 38);
             else if (RightFactory != null) right = RightFactory();
             else { cRight = Ui.Text(RightText, 15, Ui.Br(RightColor ?? Accent), true, true); right = cRight; }
             var g = Ui.Row3(bCircle, texts, right, Ui.CompactAlerts ? new Thickness(9, 0, 12, 0) : new Thickness(14, 0, 16, 0));
             Refresh();
-            return g;
+            return AlertLook.WithWash(g, Accent);
         }
 
         public override FrameworkElement BuildExpanded()
@@ -259,7 +256,7 @@ namespace DynamicIsland
         {
             var acc = Acc();
             SetGlyph(cIcon, acc); SetGlyph(eIcon, acc); SetGlyph(mIcon, acc);
-            if (bCircle != null) bCircle.Background = Ui.Br(Accent, 55);
+            if (bCircle != null) AlertLook.StyleBox(bCircle, Accent, AlertLook.BannerIcon);
             if (eCircle != null) eCircle.Background = Ui.Br(Accent, 55);
             if (cLeft != null)
             {

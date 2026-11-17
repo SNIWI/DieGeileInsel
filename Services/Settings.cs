@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -48,7 +48,10 @@ namespace DynamicIsland
         /// <summary>Licht-Effekt pro Ereignis (leer/fehlt = der allgemeine GlowStyle).</summary>
         public Dictionary<string, string> GlowStyles { get; set; } = new Dictionary<string, string>();
         /// <summary>Größe der Hinweise in der Island: small (klein und schlicht) oder normal.</summary>
+        /// <summary>Design der Hinweise: small (klein), normal (groß), ios (Mitteilung), minimal, glow (leuchtend).</summary>
         public string AlertSize { get; set; } = "small";
+        /// <summary>Pille bleibt genau in der Mitte, auch wenn rechts der kleine Kreis erscheint.</summary>
+        public bool IslandFixedCenter { get; set; } = true;
         /// <summary>Wie Hinweise erscheinen: slide (sanft hineinschieben), morph (Apple-Tropfen mit Federn), none (ohne).</summary>
         public string AlertMotion { get; set; } = "slide";
         /// <summary>Reihenfolge, wenn mehrere Hinweise gleichzeitig kommen (oben = zuerst; höhere Priorität unterbricht).</summary>
@@ -123,6 +126,10 @@ namespace DynamicIsland
         /// <summary>"expanded" = nur wenn die Island groß ist, "always" = immer, "off" = aus.</summary>
         public string CatsMode { get; set; }
         public bool CatsStayVisible { get; set; } = true;
+        /// <summary>Katzen rollen sich im Schlaf zusammen.</summary>
+        public bool CatsCurl { get; set; } = true;
+        /// <summary>Katzen neben der Island laufen ab und zu herum.</summary>
+        public bool CatsWalk { get; set; } = true;
         public List<CatConfig> Cats { get; set; } = new List<CatConfig>();
 
         // Claude Code: zeigt in der Island, was Claude gerade macht (über Hooks)

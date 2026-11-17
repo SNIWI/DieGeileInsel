@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
@@ -46,11 +46,14 @@ namespace DynamicIsland
             string cwd = Str(j, "cwd");
             sessions.TryGetValue(sid, out var act);
             if (act != null && act.Removed) { sessions.Remove(sid); act = null; }
+            string transcript = Str(j, "transcript_path");
+            if (act != null && transcript != "") act.Transcript = transcript;
 
             switch (ev)
             {
                 case "UserPromptSubmit":
                     act = Ensure(sid, cwd, act);
+                    if (transcript != "") act.Transcript = transcript;
                     act.StartTask(Str(j, "prompt"));
                     host.Relayout();   // nicht hervorholen – nur der Kreis erscheint
                     break;
@@ -60,6 +63,7 @@ namespace DynamicIsland
                     // nach „Fertig“ ließe den Kreis sonst ewig als „arbeitet“ hängen. Neue Arbeit beginnt immer mit einer Nachricht.
                     if (act != null && act.State == ClaudeState.Done) break;
                     act = Ensure(sid, cwd, act);
+                    if (transcript != "") act.Transcript = transcript;
                     bool wasIdle = act.State != ClaudeState.Working;
                     act.ToolStarted(Describe(Str(j, "tool_name"), j["tool_input"]));
                     if (wasIdle) host.Relayout();
@@ -71,9 +75,9 @@ namespace DynamicIsland
                     break;
 
                 case "PreCompact":
-                    if (act != null && act.State == ClaudeState.Done) break;
-                    act = Ensure(sid, cwd, act);
-                    act.ToolStarted("Fasst das Gespräch zusammen");
+                    // „/compact“ von Hand startet keine neue Aufgabe und endet ohne „Stop“ – sonst bliebe ein Kreis mit Zähler hängen.
+                    // Nur eine laufende Aufgabe bekommt den Hinweis.
+                    if (act != null && act.State == ClaudeState.Working) act.ToolStarted("Fasst das Gespräch zusammen");
                     break;
 
                 case "Notification":
@@ -311,6 +315,8 @@ namespace DynamicIsland
         }
 
         public override void OnRemoved() => Removed = true;
+        /// <summary>Gesprächsverlauf von Claude Code (aus den Hooks) – verrät, ob mit Esc abgebrochen wurde.</summary>
+        public string Transcript { get; set; } = "";
         public string Project => project;
         public TimeSpan DoneAfter => doneAfter;
 
@@ -472,8 +478,76 @@ namespace DynamicIsland
             doneAfter = DateTime.Now - taskStart;
             State = ClaudeState.Done;
             action = "Fertig";
-            ExpiresAt = DateTime.Now.AddSeconds(12);   // grüner Kreis kurz zeigen, dann verschwinden
+            // Kreis mit ✓ nur kurz zeigen: die Meldung dauert 4,5 s, danach steht er noch ~1,5 s und verschwindet
+            ExpiresAt = DateTime.Now.AddSeconds(6);
             Tick();
+        }
+
+        // ---------------------------------------------------------------
+        //  Läuft Claude überhaupt noch?  Abbrechen mit Esc, ein geschlossenes Fenster oder ein Absturz
+        //  schicken kein „Stop“ – ohne diese Prüfung bliebe der orange Kreis mit Zähler stehen.
+        // ---------------------------------------------------------------
+        DateTime nextCheck = DateTime.MinValue, transcriptWrite = DateTime.MinValue;
+        long transcriptLen = -1;
+        static DateTime nextProcCheck = DateTime.MinValue;
+        static bool claudeRunning = true;
+
+        bool StoppedWithoutHook(DateTime now)
+        {
+            if (now < nextCheck) return false;
+            nextCheck = now.AddSeconds(2);
+
+            // 1. Kein Claude-Prozess mehr (Fenster zu, Absturz) → sofort weg
+            if (now >= nextProcCheck)
+            {
+                nextProcCheck = now.AddSeconds(5);
+                try { claudeRunning = System.Diagnostics.Process.GetProcessesByName("claude").Length > 0; } catch { claudeRunning = true; }
+            }
+            if (!claudeRunning) return true;
+
+            // 2. Im Verlauf steht „abgebrochen“ (Esc) → weg
+            DateTime lastWrite = DateTime.MinValue;
+            try
+            {
+                if (Transcript != "" && File.Exists(Transcript))
+                {
+                    var fi = new FileInfo(Transcript);
+                    lastWrite = fi.LastWriteTime;
+                    if (fi.Length != transcriptLen)
+                    {
+                        transcriptLen = fi.Length;
+                        transcriptWrite = lastWrite;
+                        if (lastWrite > taskStart && TailSaysInterrupted(fi)) return true;
+                    }
+                }
+            }
+            catch { }
+
+            // 3. Lange nichts mehr gehört → aufräumen. Läuft gerade ein Werkzeug (z. B. ein langer Befehl), großzügig warten.
+            var quiet = now - (transcriptWrite > lastEvent ? transcriptWrite : lastEvent);
+            bool inTool = State == ClaudeState.Working && lastPre > lastPost && action != "Denkt nach …";
+            if (State == ClaudeState.Waiting) return quiet.TotalMinutes > 30;
+            return quiet.TotalMinutes > (inTool ? 12 : 6);
+        }
+
+        static bool TailSaysInterrupted(FileInfo fi)
+        {
+            using var fs = new FileStream(fi.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            long n = Math.Min(fs.Length, 6000);
+            fs.Seek(-n, SeekOrigin.End);
+            var buf = new byte[n];
+            int read = fs.Read(buf, 0, (int)n);
+            var text = System.Text.Encoding.UTF8.GetString(buf, 0, read);
+            // nur die letzten paar Zeilen: die letzte vom Nutzer muss der Abbruch-Vermerk sein
+            var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = lines.Length - 1; i >= 0 && i >= lines.Length - 4; i--)
+            {
+                var l = lines[i];
+                // genau der Vermerk als eigener Text (unmaskiert) – nicht, wenn er nur zitiert in einer Werkzeug-Ausgabe steht
+                if (l.Contains("\"type\":\"user\"") && l.Contains("\"text\":\"[Request interrupted by user")) return true;
+                if (l.Contains("\"type\":\"assistant\"")) return false;
+            }
+            return false;
         }
 
         public static string Dur(TimeSpan t) => t.TotalHours >= 1
@@ -490,8 +564,7 @@ namespace DynamicIsland
                 stepStart = lastPost;
                 lastPre = now;
             }
-            // nichts mehr gehört (Fenster zu, Absturz) → nach 10 Minuten aufräumen
-            if (State != ClaudeState.Done && (now - lastEvent).TotalMinutes > 10) Finished = true;
+            if (State != ClaudeState.Done && StoppedWithoutHook(now)) { Finished = true; return; }
 
             var total = State == ClaudeState.Done ? doneAfter : now - taskStart;
             switch (State)

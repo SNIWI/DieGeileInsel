@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -32,29 +32,30 @@ namespace DynamicIsland
 
         sealed class Page
         {
-            public string Key, Title, Subtitle, Glyph;
+            public string Group, Key, Title, Subtitle, Glyph;
             public Color Tint;
             public bool Emoji;
         }
 
+        // Reihenfolge = Seitenleiste; Group = Überschrift darüber (wie in den Systemeinstellungen am Mac)
         static readonly Page[] Pages =
         {
-            new Page { Key = "general",   Title = "Allgemein",    Glyph = "", Tint = Ui.Gray,   Subtitle = "Größe, Position, Aussehen und Ausblenden" },
-            new Page { Key = "anim",      Title = "Animationen",  Glyph = "", Tint = Ui.Orange, Subtitle = "Was passiert, wenn etwas fertig ist – pro Ereignis wählbar" },
-            new Page { Key = "overview",  Title = "Übersicht",    Glyph = "", Tint = Ui.Blue,   Subtitle = "Uhr und Kacheln der Startseite" },
-            new Page { Key = "alerts",    Title = "Hinweise",     Glyph = "", Tint = Ui.Red,    Subtitle = "Was oben kurz angezeigt wird" },
-            new Page { Key = "cats",      Title = "Katzen",       Glyph = "\U0001F431", Emoji = true, Subtitle = "Deine Begleiter neben der Island" },
-            new Page { Key = "shortcuts", Title = "Kurzbefehle",  Glyph = "", Tint = Ui.Purple, Subtitle = "Programme, Ordner und Webseiten mit einem Klick" },
-            new Page { Key = "spotify",   Title = "Spotify",      Glyph = "\uE8D6", Tint = SpotifyActivity.Green, Subtitle = "Eingebauter Player mit deinem Spotify-Konto" },
-            new Page { Key = "discord",   Title = "Discord",      Glyph = "", Tint = DiscordVoiceActivity.Blurple, Subtitle = "Nachrichten und Sprach-Overlay" },
-            new Page { Key = "pages",     Title = "Seiten & Widgets", Glyph = "\uF0E2", Tint = Ui.Teal, Subtitle = "Seiten zum Wischen sortieren, entfernen und mit Widgets bestücken" },
-            new Page { Key = "airpods",   Title = "AirPods",      Glyph = "\uE7F6", Tint = Color.FromRgb(0x63, 0x63, 0x66), Subtitle = "Akku, Ohrerkennung und automatisches Umschalten" },
-            new Page { Key = "todo",      Title = "To Do & Erinnerungen", Glyph = "\uE73A", Tint = Ui.Blue, Subtitle = "Microsoft To Do – und Apple-Erinnerungen über dein Outlook-Konto" },
-            new Page { Key = "calendar",  Title = "Kalender",     Glyph = "\uE787", Tint = Ui.Red,    Subtitle = "Termine anzeigen, erinnern und ansagen" },
-            new Page { Key = "weather",   Title = "Wetter",       Glyph = WeatherActivity.Glyph, Tint = Ui.Teal, Subtitle = "Wetter jetzt, die nächsten Stunden und Tage" },
-            new Page { Key = "claude",   Title = "Claude",       Glyph = "", Tint = ClaudeTracker.Orange, Subtitle = "Sehen, was Claude Code gerade macht – und wie lange schon" },
-            new Page { Key = "ai",        Title = "KI",          Glyph = "\uE8BD", Tint = Ui.Purple, Subtitle = "Gemini-Chat, Text-Drop-Zone und Texterkennung" },
-            new Page { Key = "keys",      Title = "Tastenkürzel", Glyph = "", Tint = Ui.Gray,   Subtitle = "Funktionen von überall aufrufen" },
+            new Page { Group = "Island",            Key = "general",   Title = "Allgemein",    Glyph = "", Tint = Ui.Gray,   Subtitle = "Größe, Position, Aussehen, Ausblenden und Start" },
+            new Page { Group = "Island",            Key = "overview",  Title = "Übersicht",    Glyph = "", Tint = Ui.Blue,   Subtitle = "Uhr und Kacheln der Startseite" },
+            new Page { Group = "Island",            Key = "pages",     Title = "Seiten & Widgets", Glyph = "\uF0E2", Tint = Ui.Teal, Subtitle = "Seiten zum Wischen sortieren, entfernen und mit Widgets bestücken" },
+            new Page { Group = "Island",            Key = "keys",      Title = "Tastenkürzel", Glyph = "", Tint = Ui.Gray,   Subtitle = "Funktionen von überall aufrufen" },
+            new Page { Group = "Hinweise & Effekte", Key = "alerts",   Title = "Hinweise",     Glyph = "", Tint = Ui.Red,    Subtitle = "Design, was oben kurz angezeigt wird und in welcher Reihenfolge" },
+            new Page { Group = "Hinweise & Effekte", Key = "anim",     Title = "Animationen",  Glyph = "", Tint = Ui.Orange, Subtitle = "Licht-Effekt und was pro Ereignis passiert" },
+            new Page { Group = "Persönlich",        Key = "cats",      Title = "Katzen",       Glyph = "\U0001F431", Emoji = true, Subtitle = "Deine Begleiter neben der Island" },
+            new Page { Group = "Persönlich",        Key = "shortcuts", Title = "Kurzbefehle",  Glyph = "", Tint = Ui.Purple, Subtitle = "Programme, Ordner und Webseiten mit einem Klick" },
+            new Page { Group = "Medien & Geräte",   Key = "spotify",   Title = "Spotify",      Glyph = "\uE8D6", Tint = SpotifyActivity.Green, Subtitle = "Eingebauter Player mit deinem Spotify-Konto" },
+            new Page { Group = "Medien & Geräte",   Key = "discord",   Title = "Discord",      Glyph = "", Tint = DiscordVoiceActivity.Blurple, Subtitle = "Nachrichten und Sprach-Overlay" },
+            new Page { Group = "Medien & Geräte",   Key = "airpods",   Title = "AirPods",      Glyph = "\uE7F6", Tint = Color.FromRgb(0x63, 0x63, 0x66), Subtitle = "Akku, Ohrerkennung und automatisches Umschalten" },
+            new Page { Group = "Planen",            Key = "calendar",  Title = "Kalender",     Glyph = "\uE787", Tint = Ui.Red,    Subtitle = "Termine anzeigen, erinnern und ansagen" },
+            new Page { Group = "Planen",            Key = "todo",      Title = "To Do & Erinnerungen", Glyph = "\uE73A", Tint = Ui.Blue, Subtitle = "Microsoft To Do – und Apple-Erinnerungen über dein Outlook-Konto" },
+            new Page { Group = "Planen",            Key = "weather",   Title = "Wetter",       Glyph = WeatherActivity.Glyph, Tint = Ui.Teal, Subtitle = "Wetter jetzt, die nächsten Stunden und Tage" },
+            new Page { Group = "KI",                Key = "ai",        Title = "KI",           Glyph = "\uE8BD", Tint = Ui.Purple, Subtitle = "Gemini-Chat, Text-Drop-Zone und Texterkennung" },
+            new Page { Group = "KI",                Key = "claude",    Title = "Claude",       Glyph = "", Tint = ClaudeTracker.Orange, Subtitle = "Sehen, was Claude Code gerade macht – und wie lange schon" },
         };
 
         /// <summary>Seiten in der Seitenleiste – „Claude“ nur, wenn Claude Code auf dem PC installiert ist.</summary>
@@ -173,8 +174,16 @@ namespace DynamicIsland
         void BuildNav()
         {
             nav.Children.Clear();
+            string group = null;
             foreach (var p in VisiblePages)
             {
+                if (p.Group != group)
+                {
+                    group = p.Group;
+                    var gh = Ui.Text(group.ToUpperInvariant(), 10.5, Secondary, true);
+                    gh.Margin = new Thickness(10, nav.Children.Count == 0 ? 0 : 14, 0, 5);
+                    nav.Children.Add(gh);
+                }
                 var pg = p;
                 bool sel = p.Key == page;
                 var icon = new Border
@@ -240,8 +249,11 @@ namespace DynamicIsland
             size.Children.Add(Divider());
             int pos = s.PosY > 1 ? -1 : s.PosX < -1 ? 0 : s.PosX > 1 ? 2 : 1;
             size.Children.Add(SegmentRow("Position", new[] { "Links", "Mitte", "Rechts" }, pos, i => host.PlaceTop(i)));
+            size.Children.Add(Divider());
+            size.Children.Add(ToggleRow("Island bleibt genau in der Mitte", s.IslandFixedCenter, v => { s.IslandFixedCenter = v; Apply(); }, out _));
             root.Children.Add(Card(size));
-            root.Children.Add(Footer("Frei verschieben: rechte Maustaste auf der Island gedrückt halten und ziehen – auch auf einen anderen Bildschirm. Rastet nur in der Mitte ein."));
+            root.Children.Add(Footer("Frei verschieben: rechte Maustaste auf der Island gedrückt halten und ziehen – auch auf einen anderen Bildschirm. Rastet nur in der Mitte ein. " +
+                                     "„Genau in der Mitte“: Die Island rutscht nicht zur Seite, wenn rechts daneben der kleine Kreis erscheint. Aus: Island und Kreis werden zusammen zentriert."));
 
             // ---------- Aussehen ----------
             root.Children.Add(Header("Aussehen"));
@@ -448,6 +460,27 @@ namespace DynamicIsland
         // =================================================================
         void BuildAlerts(StackPanel root)
         {
+            // Aussehen der Hinweise (Design + Erscheinen)
+            root.Children.Add(Header("Aussehen"));
+            var sizeCard = new StackPanel();
+            var sizeKeys = AlertLook.Designs.Select(d => d.Key).ToArray();
+            sizeCard.Children.Add(SegmentRow("Design", AlertLook.Designs.Select(d => d.Name).ToArray(),
+                Math.Max(0, Array.IndexOf(sizeKeys, s.AlertSize ?? "small")),
+                i => { s.AlertSize = sizeKeys[i]; Apply(); host.TestEvent("claude", Ui.Teal); }));
+            sizeCard.Children.Add(Divider());
+            sizeCard.Children.Add(ButtonRow(SmallButton("Vorschau: Claude", () => host.TestEvent("claude", Ui.Teal)),
+                                            SmallButton("Vorschau: Gerät", () => host.TestEvent("device", Ui.Purple))));
+            sizeCard.Children.Add(Divider());
+            var motionKeys = new[] { "slide", "morph", "none" };
+            sizeCard.Children.Add(SegmentRow("Erscheinen", new[] { "Schieben", "Tropfen (federnd)", "Ohne" },
+                Math.Max(0, Array.IndexOf(motionKeys, s.AlertMotion ?? "slide")),
+                i => { s.AlertMotion = motionKeys[i]; Apply(); host.TestEvent("copy", Ui.Teal); }));
+            root.Children.Add(Card(sizeCard));
+            root.Children.Add(Footer("Klein: flache Pille mit kleinem Symbol und einer Zeile. Groß: großes Symbol mit Leuchten, zwei Zeilen. " +
+                                     "Mitteilung: wie beim iPhone – App-Symbol im abgerundeten Quadrat, Titel mit „jetzt“, darunter der Text. " +
+                                     "Minimal: nur das farbige Symbol und eine schmale Zeile. Leuchtend: Symbol im leuchtenden Kreis, farbiger Schimmer und Titel in der Ereignisfarbe. " +
+                                     "Schieben: die Island wird sanft länger, der Inhalt gleitet hinein. Tropfen: die Island federt wie beim iPhone. Ohne: einfach einblenden."));
+
             root.Children.Add(Header("Kurz in der Island anzeigen"));
             var a = new StackPanel();
             void Row(string label, bool value, Action<bool> set)
@@ -493,51 +526,6 @@ namespace DynamicIsland
                                      "Mit dem Antworten-Knopf schreibst du direkt in der Island: Die App öffnet den Chat (WhatsApp über die Suche, Discord-DMs per Direktlink) " +
                                      "und sendet – oder fügt nur ein, wenn „direkt absenden“ aus ist. Andere Apps: Text wird eingefügt. " +
                                      "Windows muss den Zugriff auf Mitteilungen erlauben."));
-        }
-
-        // =================================================================
-        //  Animationen: pro Ereignis wählen + direkt testen
-        // =================================================================
-        static readonly string[] AnimModeKeys = { "off", "app", "appglow", "glow", "bounce", "both" };
-        static readonly string[] AnimModeNames = { "Aus", "App", "App + Licht", "Licht", "Hüpfen", "Licht + Hüpfen" };
-        static readonly (string Hex, string Name)[] AnimPalette =
-        {
-            ("#FF453A", "Rot"), ("#FF9F0A", "Orange"), ("#FFD60A", "Gelb"), ("#30D158", "Grün"), ("#64D2FF", "Türkis"),
-            ("#0A84FF", "Blau"), ("#5E5CE6", "Indigo"), ("#BF5AF2", "Lila"), ("#FF375F", "Pink"), ("#F5F5F7", "Weiß"),
-        };
-
-        void BuildAnim(StackPanel root)
-        {
-            s.AnimModes ??= new Dictionary<string, string>();
-            // Licht-Effekt (für „Licht“ und „App + Licht“) – schlicht gehalten, mit Vorschau
-            root.Children.Add(Header("Licht-Effekt (Standard)"));
-            var glowKeys = new[] { "orbit", "halo", "shine", "ring" };
-            var glowCard = new StackPanel();
-            glowCard.Children.Add(SegmentRow("Effekt", new[] { "Umlauf", "Schein", "Glanz", "Rahmen" },
-                Math.Max(0, Array.IndexOf(glowKeys, s.GlowStyle ?? "orbit")),
-                i => { s.GlowStyle = glowKeys[i]; s.Save(); host.Glow(Ui.Accent, glowKeys[i]); }));
-            glowCard.Children.Add(Divider());
-            glowCard.Children.Add(ButtonRow(SmallButton("Vorschau", () => host.Glow(Ui.Accent))));
-            root.Children.Add(Card(glowCard));
-            root.Children.Add(Footer("Umlauf: ein Lichtstreifen läuft einmal um die Island. Schein: weicher farbiger Schimmer dahinter. " +
-                                     "Glanz: ein Lichtreflex zieht über die Island. Rahmen: farbiger Rand leuchtet zweimal auf. " +
-                                     "Das Licht hat immer die Farbe, die du unten beim jeweiligen Ereignis eingestellt hast."));
-
-            // Größe der Hinweise
-            root.Children.Add(Header("Hinweise"));
-            var sizeCard = new StackPanel();
-            var sizeKeys = new[] { "small", "normal" };
-            sizeCard.Children.Add(SegmentRow("Größe der Hinweise", new[] { "Klein & schlicht", "Groß" },
-                Math.Max(0, Array.IndexOf(sizeKeys, s.AlertSize ?? "small")),
-                i => { s.AlertSize = sizeKeys[i]; Apply(); host.TestEvent("copy", Ui.Teal); }));
-            sizeCard.Children.Add(Divider());
-            var motionKeys = new[] { "slide", "morph", "none" };
-            sizeCard.Children.Add(SegmentRow("Erscheinen", new[] { "Schieben", "Tropfen (federnd)", "Ohne" },
-                Math.Max(0, Array.IndexOf(motionKeys, s.AlertMotion ?? "slide")),
-                i => { s.AlertMotion = motionKeys[i]; Apply(); host.TestEvent("copy", Ui.Teal); }));
-            root.Children.Add(Card(sizeCard));
-            root.Children.Add(Footer("Klein: Hinweise bleiben eine flache Pille mit kleinem Symbol und einer Zeile Text. Groß: breite Ansicht mit großem Symbol und zwei Zeilen. " +
-                                     "Schieben: die Island wird sanft länger, der Inhalt gleitet hinein. Tropfen: die Island federt wie beim iPhone. Ohne: einfach einblenden."));
 
             // Prioritätsliste: kommen mehrere Hinweise gleichzeitig, erscheinen sie nacheinander in dieser Reihenfolge
             root.Children.Add(Header("Reihenfolge bei mehreren Hinweisen"));
@@ -572,6 +560,35 @@ namespace DynamicIsland
             root.Children.Add(Card(prioList));
             root.Children.Add(Footer("Kommen mehrere Hinweise gleichzeitig, zeigt die Island sie nacheinander – oben zuerst. " +
                                      "Ein wichtigerer Hinweis unterbricht einen weniger wichtigen; der kommt danach mit seiner Restzeit wieder."));
+        }
+
+        // =================================================================
+        //  Animationen: pro Ereignis wählen + direkt testen
+        // =================================================================
+        static readonly string[] AnimModeKeys = { "off", "app", "appglow", "glow", "bounce", "both" };
+        static readonly string[] AnimModeNames = { "Aus", "App", "App + Licht", "Licht", "Hüpfen", "Licht + Hüpfen" };
+        static readonly (string Hex, string Name)[] AnimPalette =
+        {
+            ("#FF453A", "Rot"), ("#FF9F0A", "Orange"), ("#FFD60A", "Gelb"), ("#30D158", "Grün"), ("#64D2FF", "Türkis"),
+            ("#0A84FF", "Blau"), ("#5E5CE6", "Indigo"), ("#BF5AF2", "Lila"), ("#FF375F", "Pink"), ("#F5F5F7", "Weiß"),
+        };
+
+        void BuildAnim(StackPanel root)
+        {
+            s.AnimModes ??= new Dictionary<string, string>();
+            // Licht-Effekt (für „Licht“ und „App + Licht“) – schlicht gehalten, mit Vorschau
+            root.Children.Add(Header("Licht-Effekt (Standard)"));
+            var glowKeys = new[] { "orbit", "halo", "shine", "ring" };
+            var glowCard = new StackPanel();
+            glowCard.Children.Add(SegmentRow("Effekt", new[] { "Umlauf", "Schein", "Glanz", "Rahmen" },
+                Math.Max(0, Array.IndexOf(glowKeys, s.GlowStyle ?? "orbit")),
+                i => { s.GlowStyle = glowKeys[i]; s.Save(); host.Glow(Ui.Accent, glowKeys[i]); }));
+            glowCard.Children.Add(Divider());
+            glowCard.Children.Add(ButtonRow(SmallButton("Vorschau", () => host.Glow(Ui.Accent))));
+            root.Children.Add(Card(glowCard));
+            root.Children.Add(Footer("Umlauf: ein Lichtstreifen läuft einmal um die Island. Schein: weicher farbiger Schimmer dahinter. " +
+                                     "Glanz: ein Lichtreflex zieht über die Island. Rahmen: farbiger Rand leuchtet zweimal auf. " +
+                                     "Das Licht hat immer die Farbe, die du unten beim jeweiligen Ereignis eingestellt hast."));
 
             root.Children.Add(Header("Pro Ereignis"));
             var list = new StackPanel();
@@ -698,7 +715,7 @@ namespace DynamicIsland
             if (l == null || j < 0 || j >= l.Count) return;
             (l[i], l[j]) = (l[j], l[i]);
             s.Save();
-            Later(() => ShowPage("anim"));
+            Later(() => ShowPage("alerts"));
         }
 
         void SetAllAnim(string mode)
@@ -792,6 +809,15 @@ namespace DynamicIsland
             show.Children.Add(Divider());
             show.Children.Add(ToggleRow("Bei „Daneben“: sichtbar bleiben, wenn die Island wegfährt", s.CatsStayVisible, v => { s.CatsStayVisible = v; Changed(); }, out _));
             root.Children.Add(Card(show));
+
+            root.Children.Add(Header("Verhalten"));
+            var act = new StackPanel();
+            act.Children.Add(ToggleRow("Im Schlaf zusammenrollen", s.CatsCurl, v => { s.CatsCurl = v; Changed(); }, out _));
+            act.Children.Add(Divider());
+            act.Children.Add(ToggleRow("Herumlaufen", s.CatsWalk, v => { s.CatsWalk = v; Changed(); }, out _));
+            root.Children.Add(Card(act));
+            root.Children.Add(Footer("Eingerollt schlafen sie mit dem Schwanz um den Körper und strecken sich beim Aufwachen. " +
+                                     "Beim Herumlaufen trippeln sie ab und zu hin und her (neben der Island oder unten am Kratzbaum) – verspielte öfter, verschlafene seltener."));
             root.Children.Add(Footer("„In der Island“: Sobald du die Island groß machst, sitzen deine Katzen seitlich in der Island auf ihrem Kratzbaum. " +
                                      "„Daneben“: Sie sitzen immer rechts neben der Island."));
 

@@ -71,7 +71,7 @@ flowchart LR
 | `IslandWindow` | Transparentes, randloses Topmost-Fenster (1000×580, aktiviert sich nicht). Enthält Pille, Kreis („Bubble“), Kamera/Mikro-Punkte und das Katzen-Panel. Verwaltet die Aktivitätsliste, wählt aus, was angezeigt wird (`Relayout`), animiert Größe/Inhalt, Gesten, Auto-Ausblenden, Menüs, Hotkeys. |
 | `Activity` | Basisklasse jeder Anzeige mit drei Ansichten: **kompakt** (Pille), **minimal** (Kreis neben der Pille), **erweitert** (große Island). Eigenschaften: `Priority`, `IsAlert`, `ExpiresAt`, `Finished`, `CanExpand`, `PreferBubble`, `BubbleHoverWidth`. |
 | `GenericActivity` | Universelle Aktivität (Symbol, Texte, Fortschritt, Knöpfe, Banner) für Hinweise, Demos und die lokale API. |
-| `SetupWindow` | Einstellungsfenster im Stil der Apple-Systemeinstellungen (Seitenleiste + Karten). |
+| `SetupWindow` | Einstellungsfenster im Stil der Apple-Systemeinstellungen (Seitenleiste + Karten). Seitenleiste in Gruppen: **Island** (Allgemein, Übersicht, Seiten & Widgets, Tastenkürzel) · **Hinweise & Effekte** (Hinweise: Design, Erscheinen, was angezeigt wird, Mitteilungen, Reihenfolge · Animationen: Licht-Effekt, pro Ereignis) · **Persönlich** (Katzen, Kurzbefehle) · **Medien & Geräte** (Spotify, Discord, AirPods) · **Planen** (Kalender, To Do, Wetter) · **KI** (KI, Claude). |
 | `Ui` | Farben, Schriften, Bausteine (Text, Glyph, RoundButton, DragBar, Bar, Row3 …), `SpringEase`. |
 | `LiquidGlass` | Pixel-Shader für die gläsernen Reglerknöpfe (abschaltbar → „Flach“). |
 | `Settings` | JSON-Einstellungen inkl. Versions-Migrationen (`LayoutVersion`, `PagesVersion`, `TilesVersion`). |
@@ -98,6 +98,8 @@ flowchart LR
 
 **Größe der großen Island:** Grundmaß 420×232, skaliert mit `PageScale` (0,7–1) und verbreitert mit `PageWide` (1–1,45). Inhalt bekommt mehr Breite, wird nicht verzerrt. `Scale` vergrößert/verkleinert alles.
 
+**Mitte:** Mit „Island bleibt genau in der Mitte“ (`IslandFixedCenter`, Standard an) hält links ein unsichtbarer Platzhalter so breit wie rechts Kreis + Kamera-/Mikro-Punkte (jedes Bild nachgeführt) – die Pille rutscht nicht mehr ~22 px nach links, wenn der Kreis erscheint. Aus: Pille und Kreis werden zusammen zentriert.
+
 **Schatten:** liegt auf einer eigenen Fläche hinter der Pille (nicht auf dem Inhalt), damit Wischen und Animationen flüssig bleiben.
 
 ---
@@ -108,7 +110,7 @@ flowchart LR
 |---|---|
 | Antippen | Aktivität aufklappen · nochmal: Übersicht · nochmal: zu |
 | Gedrückt halten | Direkt zur Übersicht |
-| Seitlich wischen (groß) | Seite wechseln; die Nachbarseite schaut beim Ziehen herein (Vorschau) |
+| Seitlich wischen (groß) | Seite wechseln, im Kreis (nach der letzten kommt wieder die erste, keine Kante); die Nachbarseite schaut beim Ziehen herein (Vorschau) |
 | Seitlich wischen (klein) | ← Aktivität ausblenden · → zurückholen |
 | Mausrad (groß) | Seite wechseln (Listen scrollen zuerst bis zum Ende, Regler behalten das Rad) |
 | Rechte Maustaste ziehen | Island frei verschieben, auch auf andere Bildschirme; rastet nur in der Mitte ein |
@@ -190,7 +192,10 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 ### 8.3 Claude Code
 - **Hooks** in `%USERPROFILE%\.claude\settings.json` (UserPromptSubmit, PreToolUse, PostToolUse, Notification, Stop, SessionEnd, PreCompact) senden das Hook-JSON per `curl` asynchron an `http://localhost:7843/claude`.
 - **ClaudeTracker** führt pro Sitzung eine `ClaudeActivity`: Zustände *arbeitet* (orange, drehender Ring), *wartet* (gelb, „!“), *fertig* (grün, ✓). Werkzeuge werden in deutsche Sätze übersetzt („Bearbeitet Cats.cs“, „Sucht …“, „Denkt nach …“).
-- Schutz gegen sich überholende Signale (kein „arbeitet“ nach „fertig“), Aufräumen nach 10 min Stille.
+- **„Claude ist fertig“:** Der Kreis gleitet in einer Bewegung hinter die Pille und verschmilzt mit ihr, zeitgleich mit dem Strecken (440 ms). Sein ✓ (ohne Ring, in der Ereignisfarbe) liegt auf einer eigenen Ebene über der Pille und gleitet dabei mit dem Kreis an den rechten Rand der Meldung – mit demselben Randabstand wie das Symbol links (`AlertLook.SpotPadLeft`). Am Ende der Meldung löst sich der Kreis federnd wieder heraus und nimmt das ✓ wieder mit; nach insgesamt 6 s ist er weg.
+- Titel, Logo und ✓-Abzeichen der Meldung „Claude ist fertig“ nehmen die eingestellte Ereignisfarbe an (sonst Weiß bzw. Claude-Orange).
+- Schutz gegen sich überholende Signale (kein „arbeitet“ nach „fertig“). Ein `/compact` von Hand legt keinen neuen Kreis an.
+- Läuft Claude nicht mehr, verschwindet der Kreis auch ohne „Stop“: Abbruch mit Esc (Vermerk `[Request interrupted by user]` im Verlauf aus `transcript_path`), kein `claude`-Prozess mehr, oder Stille (6 min; 12 min während ein Werkzeug läuft; 30 min beim Warten).
 - Einrichtung per Knopf in den Einstellungen; die Seite „Claude“ erscheint nur, wenn Claude installiert ist.
 
 ### 8.4 Discord
@@ -205,7 +210,7 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 ### 8.6 Geräte
 - **Bluetooth-Seite (Apple-Stil):** runder Bluetooth-Knopf als Schalter (blau = an), Status „An · 1 Gerät verbunden“, Zahnrad zu den Einstellungen; Geräte als Kacheln in zwei Spalten (verbunden = blauer Kreis + „Verbunden · 80 %“).
 - **Kopfhörer-Seite:** großer Akku-Ring links, Name + Status rechts, Kapsel „Ton läuft hier“ / „Ton hierher holen“, Lautstärkeregler; keine Wiedergabe-Knöpfe.
-- **AirPods:** BLE-Erkennung (Akku, Case, Ohrerkennung), Auto-Pause/-Weiter, Auto-Umschalten, AAP-Verbindung (ANC/Transparenz). Case-Popup nur bei gekoppelten eigenen AirPods.
+- **AirPods:** BLE-Erkennung (Akku, Case, Ohrerkennung), Auto-Pause/-Weiter, Auto-Umschalten, AAP-Verbindung (ANC/Transparenz). Case-Popup nur, wenn deine AirPods wirklich mit dem PC verbunden sind (bis zu 7,5 s nach dem Öffnen gewartet) und die Island gerade nicht groß ist – fremde oder flackernde Cases klappen sie nicht mehr auf.
 - **Bluetooth/USB/Controller:** Meldung mit Akku-Ring; pro Gerät höchstens alle 3 h und nur nach ≥ 20 min Abwesenheit (verhindert Flackern bei Standby-Kopfhörern).
 
 ### 8.7 Downloads
@@ -220,7 +225,9 @@ Pomodoro (25/5/15), Stoppuhr mit Runden, Sprachmemos, Zwischenablage-Verlauf (25
 ### 8.9 Katzen
 - Bis zu 4 Katzen: Vorlage (9 Rassen), Fell-/Augenfarbe, Muster, Flauschig, Zubehör (+Farbe), Größe, Charakter; optional eigenes Foto.
 - Blinzeln, Schwanzwedeln, Umschauen, Hüpfen, Schnurren beim Streicheln, Einschlafen nach Ruhe (je nach Charakter).
-- In der großen Island auf einem Kratzbaum; die Katze ganz oben schläft (wacht beim Streicheln kurz auf).
+- In der großen Island auf einem Kratzbaum (Plätze: oben, Mitte links, Boden links/rechts). Alle 4–9 s passiert etwas: eine wache Katze **springt im Bogen auf einen freien Platz** (nur mit „Herumlaufen“), **schläft ein** (12–32 s, rollt sich ein) oder **zwei springen nach oben und schlafen zusammen** (Köpfe zueinander, 18–36 s, danach höchstens alle 40 s wieder). Beim Aufwachen springt eine weg, die andere rutscht in die Mitte. Streicheln weckt eine Katze. Die Verteilung bleibt beim nächsten Aufklappen erhalten; war die Island über 40 s zu, haben sich die Katzen neu verteilt (manchmal liegen dann zwei schon zusammen oben).
+- **Zusammenrollen** (`CatsCurl`, an/aus): Im Schlaf sinkt die Katze zusammen und liegt eingerollt da (Kopf auf den Pfoten, Schwanz um den Körper); beim Aufwachen streckt sie sich wieder hoch. Nur gezeichnete Katzen, Foto-Katzen schlafen wie bisher.
+- **Herumlaufen** (`CatsWalk`, an/aus): Ab und zu trippeln die Katzen ein Stück zur Seite (auf und ab, Pfoten abwechselnd, Schwanz nach hinten) und meist wieder zurück. Neben der Island bis zur Island und ~56 px nach rechts; auf dem Kratzbaum die Katzen am Boden über die Bodenplatte. Verspielte laufen öfter, verschlafene seltener; im Schlaf bleiben sie, wo sie sind.
 - Eine Vorlage zu wählen setzt eigene Farben/Muster zurück.
 
 ### 8.10 Animationen
@@ -229,11 +236,11 @@ Pro Ereignis wählbar (*Einstellungen → Animationen*): **Aus · App · App + L
 - **Farbe pro Ereignis:** Farbpunkt anklicken → Standard oder eine von 10 Farben; gilt für Symbol, Kreis und Licht.
 - **Licht-Effekte** (Standard + pro Ereignis überschreibbar): **Umlauf** (Lichtstreifen läuft einmal um die Island), **Schein** (weicher Schimmer dahinter), **Glanz** (Reflex zieht über die Island), **Rahmen** (Rand leuchtet zweimal). Das Licht hat immer die Farbe des Ereignisses.
 - **Erscheinen von Hinweisen:** **Schieben** (Standard: Island wird sanft länger, Inhalt gleitet herein, ohne Federn), **Tropfen** (federnder Apple-Morph), **Ohne**.
-- **Größe der Hinweise:** **Klein & schlicht** (Standard) oder **Groß**.
+- **Design der Hinweise** (`AlertSize`, `AlertLook.cs`), gilt für Kurz-Meldungen und Banner: **Klein** (Standard, eine Zeile, kleines Symbol im getönten Kreis) · **Groß** (großes Symbol mit Leuchten, zwei Zeilen) · **Mitteilung** (iPhone-Stil: Symbol im abgerundeten Quadrat, Titel + „jetzt“, darunter der Text) · **Minimal** (nur farbiges Symbol, schmale Zeile) · **Leuchtend** (Symbol im leuchtenden Kreis, farbiger Schimmer von links, Titel in der Ereignisfarbe). Vorschau-Knöpfe für Claude und Gerät.
 
 | Ereignis | Spotlight-Inhalt |
 |---|---|
-| Claude ist fertig | Claude-Logo · Projekt · Dauer |
+| Claude ist fertig | Claude-Logo mit ✓ · Projekt · Dauer |
 | Timer abgelaufen | Timer-Symbol · Uhrzeit |
 | Download / Spiel fertig | Datei bzw. Spiel · Größe/Store |
 | Kopieren | Zwischenablage-Symbol · Textanfang |
@@ -269,11 +276,11 @@ Gespeichert in `%APPDATA%\DynamicIsland\einstellungen.json`. Gruppen (Auswahl):
 | Größe & Position | `PageScale`, `PageWide`, `Scale`, `PosX`, `PosY`, `MonitorName` |
 | Aussehen | `AccentColor`, `NavIconsColor`, `IdlePill`, `Material`, `GlassTint`, `SpotifyColor` |
 | Ausblenden | `AutoHide`, `HideWithActivities`, `HideDelay`, `HideInFullscreen` |
-| Animationen | `AnimModes` (Ereignis → Art), `AnimColors`, `GlowStyle`, `GlowStyles`, `AlertSize`, `AlertMotion`, `AlertPriority` |
+| Animationen | `AnimModes` (Ereignis → Art), `AnimColors`, `GlowStyle`, `GlowStyles`, `AlertSize` (Design: `small`/`normal`/`ios`/`minimal`/`glow`), `AlertMotion`, `AlertPriority` |
 | Timer | `LastTimerSeconds` |
 | Seiten | `Pages`, `WidgetPages`, `DashboardTiles` |
 | Hinweise | `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads` |
-| Katzen | `CatsMode` (`expanded`/`always`/`off`), `CatsStayVisible`, `Cats` |
+| Katzen | `CatsMode` (`expanded`/`always`/`off`), `CatsStayVisible`, `CatsCurl`, `CatsWalk`, `Cats` |
 | Dienste | Spotify-, Discord-, To-Do-, Gemini-, Kalender-, Wetter-, AirPods-, Claude-Einstellungen |
 
 Migrationen laufen beim Laden automatisch (z. B. neue Seiten einfügen, „Wetter“ in „Heute“ zusammenführen, alte Animations-Schalter übernehmen).

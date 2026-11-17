@@ -198,6 +198,8 @@ namespace DynamicIsland
                     }
                 first = false;
             }
+            // abgebrochene Abfrage (E_ABORT, z. B. beim Beenden oder wenn Bluetooth gerade umschaltet) ist kein Fehler
+            catch (System.Runtime.InteropServices.COMException ex) when ((uint)ex.HResult == 0x80004004) { }
             catch (Exception ex) { Program.Log(ex); }
             finally { busy = false; }
             if (changed) Changed?.Invoke();

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -180,6 +180,21 @@ namespace DynamicIsland
 
         public readonly CatConfig Config;
         readonly Canvas art = new Canvas { Width = 30, Height = 30 };
+        readonly Canvas pose = new Canvas { Width = 30, Height = 30 };          // sitzend (normal)
+        Canvas curled;                                                           // eingerollt (Schlaf), nur gezeichnete Katzen
+        readonly ScaleTransform poseScale = new ScaleTransform(1, 1, 15, 30);
+        readonly ScaleTransform curlScale = new ScaleTransform(1, 1, 15, 30);
+        readonly ScaleTransform face = new ScaleTransform(1, 1);                 // Blickrichtung beim Laufen
+        readonly TranslateTransform walk = new TranslateTransform();
+        readonly TranslateTransform pawL = new TranslateTransform(), pawR = new TranslateTransform();
+        bool walking;
+
+        /// <summary>Einstellungen (setzt die Island): im Schlaf zusammenrollen · neben der Island herumlaufen.</summary>
+        public static bool CurlUp = true, Walk = true;
+        /// <summary>Nur die Katzen neben der Island dürfen laufen (nicht auf dem Kratzbaum). Bereich in Pixeln um den Sitzplatz.</summary>
+        public bool CanWalk { get; set; }
+        public double WalkMin { get; set; } = -4;
+        public double WalkMax { get; set; } = 56;
         readonly ScaleTransform breathe = new ScaleTransform(1, 1);
         readonly RotateTransform wiggle = new RotateTransform(0);
         readonly TranslateTransform hop = new TranslateTransform();
@@ -203,18 +218,22 @@ namespace DynamicIsland
             ToolTip = Config.Name;
             nextIdle = DateTime.Now.AddSeconds(1.5 + Rnd.NextDouble() * 4);
 
+            art.Children.Add(pose);
+            pose.RenderTransform = poseScale;
             var vb = new Viewbox { Width = size, Height = size, Child = art, RenderTransformOrigin = new Point(0.5, 1) };
             var tg = new TransformGroup();
+            tg.Children.Add(face);
             tg.Children.Add(breathe);
             tg.Children.Add(wiggle);
             tg.Children.Add(hop);
             vb.RenderTransform = tg;
             Children.Add(vb);
+            RenderTransform = walk;
 
             var breed = CatStyle.Resolve(Config);
             var photo = Config.UsePhoto ? CatStyle.LoadPhoto(Config.PhotoPath) : null;
             if (photo != null) BuildPhoto(breed, photo);
-            else BuildDrawn(breed);
+            else { BuildDrawn(breed); BuildCurled(breed); }
             BuildAccessory();
 
             zzz = new TextBlock
@@ -241,7 +260,7 @@ namespace DynamicIsland
         {
             Canvas.SetLeft(e, x);
             Canvas.SetTop(e, y);
-            art.Children.Add(e);
+            pose.Children.Add(e);
             return e;
         }
 
@@ -304,8 +323,8 @@ namespace DynamicIsland
                 AddTo(bodyMarks, new Ellipse { Width = 7, Height = 6, Fill = Ui.Br(b.Mark2) }, 17, 21);
             }
             Put(bodyMarks);
-            Put(new Ellipse { Width = 4.6, Height = 3, Fill = pawB, Stroke = lineB, StrokeThickness = 0.6 }, 9.6, 26.3);
-            Put(new Ellipse { Width = 4.6, Height = 3, Fill = pawB, Stroke = lineB, StrokeThickness = 0.6 }, 15.8, 26.3);
+            Put(new Ellipse { Width = 4.6, Height = 3, Fill = pawB, Stroke = lineB, StrokeThickness = 0.6, RenderTransform = pawL }, 9.6, 26.3);
+            Put(new Ellipse { Width = 4.6, Height = 3, Fill = pawB, Stroke = lineB, StrokeThickness = 0.6, RenderTransform = pawR }, 15.8, 26.3);
 
             // Flauschig: Fellbüschel an den Wangen und an der Brust
             if (Config.Fluffy)
@@ -366,6 +385,71 @@ namespace DynamicIsland
             bool lightWhiskers = dark || points;
             Put(Stroke("M 12,14.2 L 7.4,13.5 M 12,15 L 7.5,15.7 M 18,14.2 L 22.6,13.5 M 18,15 L 22.5,15.7",
                 lightWhiskers ? Ui.Br(Colors.White, 110) : Ui.Br(Colors.Black, 90), 0.4));
+        }
+
+        /// <summary>Eingerollt schlafen: liegender Körper, Kopf vorne auf den Pfoten, Schwanz um den Körper gelegt.</summary>
+        void BuildCurled(CatBreed b)
+        {
+            var fur = b.Fur;
+            bool dark = CatStyle.Lum(fur) < 0.3;
+            bool points = b.Pattern == CatPattern.Points;
+            bool tux = b.Pattern == CatPattern.Tuxedo;
+            var furB = Ui.Br(fur);
+            var lineB = Ui.Br(dark ? CatStyle.Mix(fur, Colors.White, 0.38) : CatStyle.Mix(fur, Colors.Black, 0.45));
+            var markB = Ui.Br(b.Mark);
+            var pink = Ui.Br(Color.FromRgb(0xFF, 0x8F, 0xA3));
+            var tailB = points ? markB : furB;
+            var earB = points ? markB : furB;
+            var pawB = points || tux ? markB : Ui.Br(CatStyle.Mix(fur, Colors.White, 0.3));
+
+            var c = new Canvas { Width = 30, Height = 30, Opacity = 0, IsHitTestVisible = false, RenderTransform = curlScale };
+            void P(UIElement e, double x = 0, double y = 0) => AddTo(c, e, x, y);
+
+            // Körper (liegend, rund) mit Muster
+            P(new Ellipse { Width = 22, Height = 13, Fill = furB, Stroke = lineB, StrokeThickness = 0.8 }, 5.5, 16);
+            var marks = Clipped(new Rect(5.5, 16, 22, 13));
+            switch (b.Pattern)
+            {
+                case CatPattern.Tabby:
+                    marks.Children.Add(Stroke("M 15.5,16.2 Q 16.6,18.4 15.9,20.6 M 19.4,16 Q 20.6,18.4 19.9,20.8 M 23.2,16.8 Q 24.3,18.8 23.6,20.8", markB, 1.1));
+                    break;
+                case CatPattern.Calico:
+                    AddTo(marks, new Ellipse { Width = 8, Height = 6, Fill = markB }, 13, 15.5);
+                    AddTo(marks, new Ellipse { Width = 7, Height = 6, Fill = Ui.Br(b.Mark2) }, 21, 20);
+                    break;
+                case CatPattern.Points:
+                    AddTo(marks, new Ellipse { Width = 9, Height = 9, Fill = markB, Opacity = 0.55 }, 21, 19);
+                    break;
+            }
+            P(marks);
+
+            // Schwanz: um die Vorderseite gelegt
+            const string tail = "M 26.6,22.6 C 29.4,28.4 22.4,30.2 14.6,29.8 C 10.6,29.6 7.6,28.9 6.2,27.4";
+            P(Stroke(tail, lineB, 4.2));
+            P(Stroke(tail, tailB, 2.8));
+
+            // Pfoten unter dem Kinn
+            P(new Ellipse { Width = 4.2, Height = 2.6, Fill = pawB, Stroke = lineB, StrokeThickness = 0.6 }, 5.4, 25.4);
+            P(new Ellipse { Width = 4.2, Height = 2.6, Fill = pawB, Stroke = lineB, StrokeThickness = 0.6 }, 9.4, 25.8);
+
+            // Kopf auf den Pfoten, Ohren angelegt
+            P(Tri(earB, lineB, 0.8, 4.2, 18.4, 4.4, 12.8, 8.6, 15.6));
+            P(Tri(earB, lineB, 0.8, 10.4, 15, 14, 12.4, 15, 17.6));
+            P(new Ellipse { Width = 12, Height = 10.4, Fill = furB, Stroke = lineB, StrokeThickness = 0.8 }, 3.6, 15.2);
+            var head = Clipped(new Rect(3.6, 15.2, 12, 10.4));
+            if (b.Pattern == CatPattern.Points) AddTo(head, new Ellipse { Width = 7, Height = 5.5, Fill = markB, Opacity = 0.9 }, 6, 19.5);
+            if (tux) AddTo(head, new Ellipse { Width = 5.5, Height = 4, Fill = markB }, 6.8, 21.8);
+            if (b.Pattern == CatPattern.Tabby) head.Children.Add(Stroke("M 8.6,15.6 L 8.9,17.6 M 10.4,15.5 L 10.4,17.5", markB, 0.9));
+            if (b.Pattern == CatPattern.Calico) AddTo(head, new Ellipse { Width = 6, Height = 6, Fill = markB }, 2.6, 14.4);
+            P(head);
+            P(Tri(pink, null, 0, 5.2, 17.4, 5.4, 14.4, 7.4, 16));
+            P(Tri(pink, null, 0, 11.2, 15.6, 13.3, 13.8, 13.8, 16.6));
+            var closedB = points ? Ui.Br(b.Fur) : dark ? lineB : Ui.Br(Colors.Black, 170);
+            P(Stroke("M 6,20.6 Q 7.3,21.7 8.6,20.6 M 10.6,20.6 Q 11.9,21.7 13.2,20.6", closedB, 0.85));
+            P(Tri(pink, null, 0, 9, 22.6, 10.6, 22.6, 9.8, 23.5));
+
+            art.Children.Add(c);
+            curled = c;
         }
 
         /// <summary>Zubehör obendrauf: Halsband, Schleife, Hut, Krone, Brille …</summary>
@@ -463,6 +547,8 @@ namespace DynamicIsland
 
         void ApplySleep()
         {
+            if (sleeping) StopWalk();
+            ApplyCurl(sleeping && CurlUp && curled != null);
             ShowEyes(!sleeping);
             // im Schlaf liegt der Schwanz eingerollt am Körper
             tailRot.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(sleeping ? 38 : 0,
@@ -490,6 +576,128 @@ namespace DynamicIsland
             }
         }
 
+        bool isCurled;
+
+        /// <summary>Einrollen: sitzende Katze sinkt zusammen, die eingerollte erscheint. Aufwachen: streckt sich wieder hoch.</summary>
+        void ApplyCurl(bool curl)
+        {
+            if (curled == null || curl == isCurled) return;
+            isCurled = curl;
+            if (Ui.ReduceMotion || instantCurl)
+            {
+                poseScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                poseScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                pose.BeginAnimation(OpacityProperty, null);
+                curled.BeginAnimation(OpacityProperty, null);
+                pose.Opacity = curl ? 0 : 1;
+                curled.Opacity = curl ? 1 : 0;
+                return;
+            }
+            TimeSpan T(double s) => TimeSpan.FromSeconds(s);
+            var inOut = new SineEase { EasingMode = EasingMode.EaseInOut };
+            if (curl)
+            {
+                // langsam hinlegen: zusammensinken, dabei wird sie breiter und rund
+                poseScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 0.5, T(0.55)) { EasingFunction = inOut });
+                poseScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, 1.12, T(0.55)) { EasingFunction = inOut });
+                pose.BeginAnimation(OpacityProperty, new DoubleAnimation(0, T(0.4)) { BeginTime = T(0.2) });
+                curled.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, T(0.4)) { BeginTime = T(0.25) });
+                curlScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.35, 1, T(0.6)) { BeginTime = T(0.25), EasingFunction = new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut } });
+                curlScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.85, 1, T(0.6)) { BeginTime = T(0.25), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            }
+            else
+            {
+                // aufwachen und strecken: kurz höher als normal, dann federt sie zurück
+                curled.BeginAnimation(OpacityProperty, new DoubleAnimation(0, T(0.25)));
+                curlScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 1.3, T(0.3)));
+                pose.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, T(0.25)) { BeginTime = T(0.05) });
+                var up = new DoubleAnimationUsingKeyFrames();
+                up.KeyFrames.Add(new EasingDoubleKeyFrame(0.55, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+                up.KeyFrames.Add(new EasingDoubleKeyFrame(1.1, KeyTime.FromTimeSpan(T(0.35)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+                up.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(T(0.65)), inOut));
+                poseScale.BeginAnimation(ScaleTransform.ScaleYProperty, up);
+                poseScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.1, 1, T(0.5)) { EasingFunction = inOut });
+            }
+        }
+
+        // ---------------------------------------------------------------
+        //  Herumlaufen (nur neben der Island): trippelt ein Stück zur Seite, schaut in Laufrichtung
+        // ---------------------------------------------------------------
+        void StartWalk(double to)
+        {
+            if (walking || sleeping || Ui.ReduceMotion) return;
+            double from = walk.X;
+            double dist = Math.Abs(to - from);
+            if (dist < 6) return;
+            walking = true;
+            double secs = Math.Max(0.7, dist / (Config.Mood == "playful" ? 34 : Config.Mood == "sleepy" ? 18 : 25));
+            face.ScaleX = to > from ? -1 : 1;   // Schwanz zeigt nach hinten
+
+            // Schritte: leicht auf und ab, Pfoten abwechselnd, kleines Watscheln
+            const double step = 0.26;
+            var bob = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(step), RepeatBehavior = RepeatBehavior.Forever };
+            bob.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            bob.KeyFrames.Add(new EasingDoubleKeyFrame(-1.3, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(step / 2)), new SineEase()));
+            bob.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(step)), new SineEase()));
+            hop.BeginAnimation(TranslateTransform.YProperty, bob);
+            var paw = new DoubleAnimation(0, -1.4, TimeSpan.FromSeconds(step / 2)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever };
+            pawL.BeginAnimation(TranslateTransform.YProperty, paw);
+            pawR.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -1.4, TimeSpan.FromSeconds(step / 2))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, BeginTime = TimeSpan.FromSeconds(step / 2) });
+            wiggle.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-3, 3, TimeSpan.FromSeconds(step)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+            tailRot.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(-8, 6, TimeSpan.FromSeconds(step * 2)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+
+            var move = new DoubleAnimation(from, to, TimeSpan.FromSeconds(secs)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+            move.Completed += (s, e) => { if (walking) StopWalk(); };
+            walk.BeginAnimation(TranslateTransform.XProperty, move);
+        }
+
+        void StopWalk()
+        {
+            if (!walking) return;
+            walking = false;
+            double x = walk.X;
+            walk.BeginAnimation(TranslateTransform.XProperty, null);
+            walk.X = x;                                  // bleibt dort stehen
+            hop.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.12)));
+            pawL.BeginAnimation(TranslateTransform.YProperty, null);
+            pawR.BeginAnimation(TranslateTransform.YProperty, null);
+            wiggle.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.15)));
+            tailRot.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(sleeping ? 38 : 0, TimeSpan.FromSeconds(0.3)));
+            nextIdle = DateTime.Now.AddSeconds(1 + Rnd.NextDouble() * 2);
+        }
+
+        /// <summary>Blickrichtung: gespiegelt = schaut nach rechts (Schwanz links), eingerollt liegt der Kopf dann rechts.</summary>
+        public void Face(bool flipped) => face.ScaleX = flipped ? -1 : 1;
+
+        /// <summary>Hört auf zu laufen und gibt zurück, wie weit sie vom Platz weg ist (für einen Platzwechsel).</summary>
+        public double TakeWalkOffset()
+        {
+            StopWalk();
+            double x = walk.X;
+            walk.BeginAnimation(TranslateTransform.XProperty, null);
+            walk.X = 0;
+            return x;
+        }
+
+        bool instantCurl;
+        /// <summary>Schlafend/wach ohne Übergang (z. B. schon eingerollt, wenn die Island aufgeht).</summary>
+        public void SetSleepingInstant(bool s)
+        {
+            instantCurl = true;
+            Sleeping = s;
+            instantCurl = false;
+        }
+
+        /// <summary>Laufen wurde ausgeschaltet: zurück an den Platz.</summary>
+        public void GoHome()
+        {
+            StopWalk();
+            if (Math.Abs(walk.X) < 0.5) { face.ScaleX = 1; return; }
+            walk.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.4)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+            face.ScaleX = 1;
+        }
+
         void ShowEyes(bool open)
         {
             if (eyesOpen == null) return;
@@ -507,9 +715,18 @@ namespace DynamicIsland
         /// <summary>Wird ca. 20× pro Sekunde aufgerufen und löst ab und zu eine kleine Bewegung aus.</summary>
         public void Tick(DateTime now)
         {
-            if (sleeping || Ui.ReduceMotion || now < nextIdle) return;
+            if (walking && (!Walk || !CanWalk)) GoHome();
+            if (sleeping || walking || Ui.ReduceMotion || now < nextIdle) return;
             bool playful = Config.Mood == "playful", sleepy = Config.Mood == "sleepy";
             nextIdle = now.AddSeconds(playful ? 1.4 + Rnd.NextDouble() * 2.6 : sleepy ? 4 + Rnd.NextDouble() * 6 : 2.5 + Rnd.NextDouble() * 5);
+            if (!(Walk && CanWalk) && Math.Abs(walk.X) > 0.5) { GoHome(); return; }
+            // ab und zu ein Stück laufen – verspielte öfter, verschlafene selten; meist wieder zurück zum Platz
+            if (Walk && CanWalk && Rnd.NextDouble() < (playful ? 0.3 : sleepy ? 0.08 : 0.18))
+            {
+                double to = Math.Abs(walk.X) > 8 && Rnd.NextDouble() < 0.55 ? 0 : WalkMin + Rnd.NextDouble() * (WalkMax - WalkMin);
+                StartWalk(to);
+                if (walking) return;
+            }
             double r = Rnd.NextDouble();
             if (playful && r > 0.8) { if (r > 0.9) Hop(); else Swish(); return; }
             if (sleepy && r > 0.75) { Blink(true); return; }
@@ -550,6 +767,7 @@ namespace DynamicIsland
 
         public void Hop()
         {
+            StopWalk();
             Wake();
             if (Ui.ReduceMotion) return;
             hop.BeginAnimation(TranslateTransform.YProperty, Keys((0, 0), (0.14, -4), (0.32, 0), (0.42, -1), (0.5, 0)));
@@ -558,6 +776,7 @@ namespace DynamicIsland
         /// <summary>Streicheln: glückliche Augen, kleines Wackeln, Herz.</summary>
         public void Purr()
         {
+            StopWalk();
             Wake();
             ShowEyes(false);
             happyTimer?.Stop();

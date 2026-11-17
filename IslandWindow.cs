@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Diagnostics;
@@ -100,6 +100,8 @@ namespace DynamicIsland
         readonly Dictionary<string, GenericActivity> dlActs = new Dictionary<string, GenericActivity>();
         StackPanel catsPanel, islandPart;
         Border catsSpacer;
+        Border bubbleSpacer;      // links, so breit wie Kreis + Punkte rechts → die Pille bleibt genau in der Mitte
+        StackPanel dotsPanel;
         bool catsHover;
         DateTime lastInteraction = DateTime.Now;
         DiscordVoiceActivity voiceAct;
@@ -165,7 +167,10 @@ namespace DynamicIsland
             dashboard = new DashboardActivity(this) { Host = this };
             LiquidGlass.Configure(Settings.Material != "flat", Settings.GlassTint);
             Ui.Accent = Ui.ParseColor(Settings.AccentColor, Ui.Blue);
-            Ui.CompactAlerts = Settings.AlertSize != "normal";   // Hinweise klein und schlicht
+            Ui.AlertDesign = Settings.AlertSize ?? "small";      // Design der Hinweise (klein, groß, Mitteilung, minimal, leuchtend)
+            Ui.CompactAlerts = Ui.AlertDesign == "small" || Ui.AlertDesign == "minimal";
+            CatView.CurlUp = Settings.CatsCurl;   // Katzen: im Schlaf einrollen
+            CatView.Walk = Settings.CatsWalk;     // Katzen: neben der Island herumlaufen
             Ui.AlertMotion = Settings.AlertMotion ?? "slide";
             Ui.SpotifyAccent = Ui.ParseColor(Settings.SpotifyColor, Color.FromRgb(0x1E, 0xD7, 0x60));
             BuildVisuals();
@@ -280,6 +285,7 @@ namespace DynamicIsland
             var dots = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(7, 14, 0, 0) };
             dots.Children.Add(camDot);
             dots.Children.Add(micDot);
+            dotsPanel = dots;
 
             // Pille, Kreis und Punkte fahren zusammen nach oben weg …
             islandPart = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top, RenderTransform = tuckIsland };
@@ -289,11 +295,15 @@ namespace DynamicIsland
             islandPart.Children.Add(pillStack);
             pillStackRef = pillStack;
             islandPart.Children.Add(bubble);
+            Panel.SetZIndex(bubble, -1);   // hinter der Pille – so kann der Kreis in sie hineingleiten
             islandPart.Children.Add(dots);
 
             // … die Katzen sitzen rechts daneben. Links hält ein unsichtbarer Platzhalter
             // gleicher Breite die Pille in der Mitte.
             catsSpacer = new Border { Width = 0, IsHitTestVisible = false };
+            bubbleSpacer = new Border { Width = 0, IsHitTestVisible = false };
+            // jedes Bild nachziehen, damit die Pille auch während Kreis-Animationen still in der Mitte steht
+            CompositionTarget.Rendering += (s, e) => UpdateBubbleSpacer();
             catsPanel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -310,6 +320,7 @@ namespace DynamicIsland
             catsPanel.SizeChanged += (s, e) => UpdateCatsSpacer();
 
             row.Children.Add(catsSpacer);
+            row.Children.Add(bubbleSpacer);
             row.Children.Add(islandPart);
             row.Children.Add(catsPanel);
             rootGrid.Children.Add(row);
@@ -708,6 +719,14 @@ namespace DynamicIsland
                 else { w = 84; h = 8; }
             }
 
+            // „Claude ist fertig“: der kleine Kreis fließt in die Island hinein statt daneben stehen zu bleiben
+            bool mergeBubble = false;
+            if (!expanded && show != null && show == alert && alert.Id == "spotlight-claude" && secondary is ClaudeActivity)
+            {
+                secondary = null;
+                mergeBubble = true;
+            }
+
             string key = show == null
                 ? "idle"
                 : (expanded ? "E:" : "C:") + show.Id + ":" + w.ToString(CultureInfo.InvariantCulture) + "x" + h.ToString(CultureInfo.InvariantCulture);
@@ -719,7 +738,7 @@ namespace DynamicIsland
             bool alertNow = show != null && show.IsAlert && !expanded;
             AnimateSize(w, h, (alertNow || alertShownBefore) && Ui.AlertMotion != "morph");   // Hinweise sanft hinein- und wieder hinausschieben
             alertShownBefore = alertNow;
-            rowWidth = w + (secondary != null ? 44 : 0) + 30 + 2 * (catsSpacer?.Width ?? 0);
+            rowWidth = w + (secondary != null ? (Settings.IslandFixedCenter ? 88 : 44) : 0) + 30 + 2 * (catsSpacer?.Width ?? 0);
             PlaceCats();
             UpdateNudge(!dragging);
 
@@ -748,8 +767,9 @@ namespace DynamicIsland
             else
             {
                 bubbleAct = null;
-                ShowBubble(false);
+                ShowBubble(false, mergeBubble);
             }
+            UpdateDoneCheck(!expanded && show != null && show.Id == "spotlight-claude");
         }
 
         void SetContent(Activity a, bool expanded, double w, double h)
@@ -950,16 +970,172 @@ namespace DynamicIsland
             bubble.BeginAnimation(WidthProperty, new DoubleAnimation(wide ? bubbleAct.BubbleHoverWidth : 36, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease });
         }
 
-        void ShowBubble(bool show)
+        bool bubbleMerged;   // Kreis steckt gerade in der Island (nach „Claude ist fertig“)
+
+        void ShowBubble(bool show, bool merge = false)
         {
             if (show == bubbleShown) return;
             bubbleShown = show;
             bubbleWide = false;
+            if (!show && merge && !Ui.ReduceMotion) { MergeBubble(); return; }
+            if (show && bubbleMerged && !Ui.ReduceMotion) { EmergeBubble(); return; }
+            bubbleMerged = false;
+            bubbleContent.BeginAnimation(OpacityProperty, null);
+            bubbleContent.Opacity = 1;
             var d = TimeSpan.FromMilliseconds(400);
             var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
             bubble.BeginAnimation(WidthProperty, new DoubleAnimation(show ? 36 : 0, d) { EasingFunction = ease });
             bubble.BeginAnimation(OpacityProperty, new DoubleAnimation(show ? 1 : 0, d));
             bubble.BeginAnimation(MarginProperty, new ThicknessAnimation(new Thickness(show ? 8 : 0, 0, 0, 0), d) { EasingFunction = ease });
+        }
+
+        /// <summary>Kreis gleitet hinter die Pille und verschmilzt mit ihr (wie ein Tropfen, der aufgesogen wird).
+        /// Schwarz auf Schwarz: sobald der Kreis die runde Kante erreicht, wirkt beides wie eine Form.</summary>
+        void MergeBubble()
+        {
+            bubbleMerged = true;
+            // eine einzige Bewegung, zeitgleich mit dem Wachsen der Island (420 ms) – kein Warten, kein Stocken.
+            // War die Island oben versteckt, kurz versetzt, damit man das Hineingleiten noch sieht.
+            mergeStartMs = tucked ? 150 : 0;
+            var start = TimeSpan.FromMilliseconds(mergeStartMs);
+            var slide = TimeSpan.FromMilliseconds(440);
+            var end = slide + TimeSpan.FromMilliseconds(1);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+
+            var m = new ThicknessAnimationUsingKeyFrames { BeginTime = start };
+            m.KeyFrames.Add(new DiscreteThicknessKeyFrame(new Thickness(8, 0, 0, 0), KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            m.KeyFrames.Add(new EasingThicknessKeyFrame(new Thickness(-36, 0, 0, 0), KeyTime.FromTimeSpan(slide), ease));
+            m.KeyFrames.Add(new DiscreteThicknessKeyFrame(new Thickness(0), KeyTime.FromTimeSpan(end)));
+
+            var w = new DoubleAnimationUsingKeyFrames { BeginTime = start };
+            w.KeyFrames.Add(new DiscreteDoubleKeyFrame(36, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            w.KeyFrames.Add(new EasingDoubleKeyFrame(36, KeyTime.FromTimeSpan(slide)));
+            w.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromTimeSpan(end)));
+
+            var o = new DoubleAnimationUsingKeyFrames { BeginTime = start };
+            o.KeyFrames.Add(new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            o.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromTimeSpan(end)));
+
+            bubble.BeginAnimation(MarginProperty, m);
+            bubble.BeginAnimation(WidthProperty, w);
+            bubble.BeginAnimation(OpacityProperty, o);
+            // das Häkchen übernimmt eine eigene Ebene über der Island (UpdateDoneCheck) und gleitet in die rechte Ecke
+            var hide = new DoubleAnimationUsingKeyFrames();
+            hide.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromTimeSpan(start)));
+            bubbleContent.BeginAnimation(OpacityProperty, hide);
+        }
+
+        /// <summary>Gegenstück: der Kreis löst sich wieder aus der Island und federt an seinen Platz.</summary>
+        void EmergeBubble()
+        {
+            bubbleMerged = false;
+            emergedAt = DateTime.Now;
+            var d = TimeSpan.FromMilliseconds(620);
+            bubble.BeginAnimation(WidthProperty, new DoubleAnimation(36, 36, TimeSpan.Zero));
+            bubble.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 1, TimeSpan.Zero));
+            bubble.BeginAnimation(MarginProperty, new ThicknessAnimation(new Thickness(-36, 0, 0, 0), new Thickness(8, 0, 0, 0), d)
+                { EasingFunction = new SpringEase { Damping = 0.62 } });
+            if (doneCheck != null)
+            {
+                // das schwebende Häkchen fliegt mit zurück und gibt sich am Ende an den Kreis zurück
+                bubbleContent.BeginAnimation(OpacityProperty, null);
+                bubbleContent.Opacity = 0;
+            }
+            else bubbleContent.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)) { BeginTime = TimeSpan.FromMilliseconds(200) });
+        }
+
+        // ---------------------------------------------------------------
+        //  Das ✓ aus dem Claude-Kreis: eigene Ebene über der Pille (nicht abgeschnitten),
+        //  gleitet beim Einfließen genau mit dem Kreis in die rechte Ecke und beim Herauslösen wieder zurück.
+        //  Lage: Mitte = rechter Pillenrand − 18 + X; der Kreis liegt bei Rand + Abstand + 18 → X = Abstand + 36.
+        // ---------------------------------------------------------------
+        FrameworkElement doneCheck;
+        TranslateTransform doneCheckShift;
+        int mergeStartMs;
+        DateTime emergedAt = DateTime.MinValue;
+
+        static FrameworkElement BuildDoneCheck()
+        {
+            var c = ClaudeActivity.DoneColor();
+            // nur das Häkchen, ohne Ring – sieht neben dem Symbol links einheitlicher aus
+            var g = new Grid { Width = 36, Height = 36, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+            g.Children.Add(new TextBlock
+            {
+                Text = "✓", FontFamily = Ui.TextFont, FontWeight = FontWeights.Bold, FontSize = 17, Foreground = Ui.Br(c),
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, -1, 0, 0)
+            });
+            return g;
+        }
+
+        /// <summary>
+        /// Endlage des Häkchens: so nah am rechten Rand wie das Symbol links am linken Rand (gleicher Abstand).
+        /// X = 0 hieße Mitte 18 px vor dem Rand; das Häkchen ist ~12 px breit.
+        /// </summary>
+        static double DoneCheckEndX => Math.Max(0, 12 - (AlertLook.SpotPadLeft + 1));
+
+        void UpdateDoneCheck(bool want)
+        {
+            if (pillStackRef == null) return;
+            if (want && doneCheck == null)
+            {
+                doneCheck = BuildDoneCheck();
+                doneCheckShift = new TranslateTransform();
+                var sc = new ScaleTransform(1, 1);
+                doneCheck.RenderTransformOrigin = new Point(0.5, 0.5);
+                doneCheck.RenderTransform = new TransformGroup { Children = { sc, doneCheckShift } };
+                pillStackRef.Children.Add(doneCheck);
+                if (Ui.ReduceMotion) return;
+                if (bubbleMerged)
+                {
+                    // gleiche Bahn und gleiche Kurve wie der Kreis in MergeBubble
+                    var start = TimeSpan.FromMilliseconds(mergeStartMs);
+                    var a = new DoubleAnimationUsingKeyFrames();
+                    a.KeyFrames.Add(new DiscreteDoubleKeyFrame(44, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+                    a.KeyFrames.Add(new DiscreteDoubleKeyFrame(44, KeyTime.FromTimeSpan(start)));
+                    a.KeyFrames.Add(new EasingDoubleKeyFrame(DoneCheckEndX, KeyTime.FromTimeSpan(start + TimeSpan.FromMilliseconds(440)),
+                        new CubicEase { EasingMode = EasingMode.EaseInOut }));
+                    doneCheckShift.BeginAnimation(TranslateTransform.XProperty, a);
+                }
+                else
+                {
+                    // kein Kreis zu sehen: das Häkchen springt direkt in der Ecke auf
+                    doneCheckShift.X = DoneCheckEndX;
+                    doneCheck.Opacity = 0;
+                    doneCheck.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)) { BeginTime = TimeSpan.FromMilliseconds(260) });
+                    var pop = new DoubleAnimation(0.4, 1, TimeSpan.FromMilliseconds(560)) { BeginTime = TimeSpan.FromMilliseconds(260), EasingFunction = new SpringEase { Damping = 0.55 } };
+                    sc.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
+                    sc.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
+                }
+            }
+            else if (!want && doneCheck != null)
+            {
+                var el = doneCheck;
+                var sh = doneCheckShift;
+                doneCheck = null;
+                doneCheckShift = null;
+                void Remove() => pillStackRef.Children.Remove(el);
+                if (Ui.ReduceMotion) { Remove(); bubbleContent.BeginAnimation(OpacityProperty, null); bubbleContent.Opacity = 1; return; }
+                if ((DateTime.Now - emergedAt).TotalMilliseconds < 150)
+                {
+                    // fliegt mit dem Kreis zurück (gleiche Feder wie EmergeBubble) und steckt danach wieder im Kreis
+                    var back = new DoubleAnimation(sh.X, 44, TimeSpan.FromMilliseconds(620)) { EasingFunction = new SpringEase { Damping = 0.62 } };
+                    back.Completed += (s, e) =>
+                    {
+                        Remove();
+                        bubbleContent.BeginAnimation(OpacityProperty, null);
+                        bubbleContent.Opacity = 1;
+                    };
+                    sh.BeginAnimation(TranslateTransform.XProperty, back);
+                }
+                else
+                {
+                    var f = new DoubleAnimation(0, TimeSpan.FromMilliseconds(200));
+                    f.Completed += (s, e) => Remove();
+                    el.BeginAnimation(OpacityProperty, f);
+                }
+            }
         }
 
         void UpdateHoverScale()
@@ -1377,8 +1553,11 @@ namespace DynamicIsland
             {
                 foreach (var cfg in Settings.Cats.Take(4))
                 {
-                    var v = new CatView(cfg, 30);
+                    var v = new CatView(cfg, 30) { CanWalk = true };
                     if (catViews.Count > 0) v.Margin = new Thickness(5, 0, 0, 0);
+                    // laufen bis zur Island (nicht hinein) und ein Stück nach rechts
+                    v.WalkMin = -(catViews.Count * 35) - 4;
+                    v.WalkMax = 56;
                     v.MouseLeftButtonDown += (s, e) => e.Handled = true;
                     v.MouseLeftButtonUp += (s, e) => { e.Handled = true; PetCat(v); };
                     v.MouseRightButtonUp += (s, e) => { e.Handled = true; ShowMenu(); };
@@ -1426,15 +1605,34 @@ namespace DynamicIsland
             }
         }
 
-        /// <summary>Seitliche Spalte der großen Island: hoher Kratzbaum mit deinen Katzen.</summary>
-        CatView topCat;          // sitzt oben auf dem Kratzbaum und schläft dort
-        DateTime topCatAwake;    // zuletzt geweckt (Streicheln) – kurz danach schläft sie wieder ein
-        const double TopCatNapAfter = 6;
+        // =================================================================
+        //  Kratzbaum (seitliche Spalte der großen Island): Die Katzen wechseln ab und zu die Plätze
+        //  (springen im Bogen), jede kann einschlafen (rollt sich ein), und manchmal springen zwei
+        //  nach oben und schlafen dort zusammen – Köpfe zueinander.
+        //  Plätze 0–3 = CatTower.Spots (oben, Boden rechts, Mitte links, Boden links); 4/5 = zusammen oben.
+        //  Die Verteilung bleibt beim nächsten Aufklappen erhalten; war die Island länger zu, haben
+        //  sich die Katzen inzwischen neu verteilt.
+        // =================================================================
+        static readonly Point[] CuddleSpots = { new Point(10, -4), new Point(27, -4) };
+        int[] towerSpot;
+        DateTime[] towerSleepUntil;
+        bool[] towerBusy;
+        DateTime towerNext, lastStripBuild = DateTime.MinValue, lastCuddleEnd = DateTime.MinValue;
+
+        static Point SpotPos(int s) => s >= 4 ? CuddleSpots[s - 4] : CatTower.Spots[s];
+        static bool IsTopSpot(int s) => s == 0 || s >= 4;
+
+        /// <summary>Am Boden dürfen sie über die Bodenplatte laufen, oben und in der Mitte nicht.</summary>
+        static void ApplySpotRole(CatView v, int s)
+        {
+            v.CanWalk = s == 1 || s == 3;
+            v.WalkMin = s == 1 ? -36 : 0;
+            v.WalkMax = s == 3 ? 36 : 0;
+        }
 
         FrameworkElement BuildCatStrip()
         {
             stripCats.Clear();
-            topCat = null;
             var c = new Canvas
             {
                 Width = 64,
@@ -1445,27 +1643,182 @@ namespace DynamicIsland
             };
             c.Children.Add(new CatTower());
             var cats = Settings.Cats.Take(4).ToList();
-            for (int i = 0; i < cats.Count; i++)
+            int n = cats.Count;
+            var now = DateTime.Now;
+            if (towerSpot == null || towerSpot.Length != n)
+            {
+                towerSpot = Enumerable.Range(0, n).ToArray();
+                towerSleepUntil = new DateTime[n];
+                if (n > 0) towerSleepUntil[0] = now.AddSeconds(25);   // die oben döst
+                lastStripBuild = now;
+            }
+            towerBusy = new bool[n];
+
+            // länger nicht hingeschaut → inzwischen haben sie sich neu verteilt
+            if (n > 0 && (now - lastStripBuild).TotalSeconds > 40)
+            {
+                double r = Rnd.NextDouble();
+                if (n >= 2 && r < 0.3)
+                {
+                    // zwei schlafen oben zusammen
+                    var pair = Enumerable.Range(0, n).OrderBy(_ => Rnd.Next()).Take(2).ToArray();
+                    var rest = new Queue<int>(new[] { 1, 2, 3 }.OrderBy(_ => Rnd.Next()));
+                    var until = now.AddSeconds(20 + Rnd.NextDouble() * 25);
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (i == pair[0]) { towerSpot[i] = 4; towerSleepUntil[i] = until; }
+                        else if (i == pair[1]) { towerSpot[i] = 5; towerSleepUntil[i] = until; }
+                        else { towerSpot[i] = rest.Dequeue(); towerSleepUntil[i] = DateTime.MinValue; }
+                    }
+                }
+                else if (r < 0.7)
+                {
+                    var spots = new[] { 0, 1, 2, 3 }.OrderBy(_ => Rnd.Next()).Take(n).ToArray();
+                    for (int i = 0; i < n; i++)
+                    {
+                        towerSpot[i] = spots[i];
+                        towerSleepUntil[i] = Rnd.NextDouble() < 0.4 ? now.AddSeconds(10 + Rnd.NextDouble() * 20) : DateTime.MinValue;
+                    }
+                }
+            }
+            lastStripBuild = now;
+            towerNext = now.AddSeconds(3 + Rnd.NextDouble() * 3);
+
+            for (int i = 0; i < n; i++)
             {
                 var v = new CatView(cats[i], 26);
+                ApplySpotRole(v, towerSpot[i]);
                 v.MouseLeftButtonDown += (s, e) => e.Handled = true;
                 v.MouseLeftButtonUp += (s, e) => { e.Handled = true; PetCat(v); };
-                Canvas.SetLeft(v, CatTower.Spots[i].X);
-                Canvas.SetTop(v, CatTower.Spots[i].Y);
+                var p = SpotPos(towerSpot[i]);
+                Canvas.SetLeft(v, p.X);
+                Canvas.SetTop(v, p.Y);
+                if (towerSpot[i] == 4) v.Face(true);
                 c.Children.Add(v);
                 stripCats.Add(v);
+                if (towerSleepUntil[i] > now) v.SetSleepingInstant(true);
             }
-            if (stripCats.Count > 0)
+            // eine wache Katze hüpft zur Begrüßung
+            var awake = stripCats.Where(x => !x.Sleeping).ToList();
+            if (awake.Count > 0)
             {
-                // die Katze ganz oben döst: nach dem Aufklappen noch kurz wach, dann schläft sie ein
-                topCat = stripCats[0];
-                topCatAwake = DateTime.Now.AddSeconds(-(TopCatNapAfter - 1.5));
-                var others = stripCats.Skip(1).ToList();
-                if (others.Count == 0) return c;
-                var hopper = others[Rnd.Next(others.Count)];
+                var hopper = awake[Rnd.Next(awake.Count)];
                 Dispatcher.BeginInvoke(new Action(hopper.Hop), DispatcherPriority.Background);
             }
             return c;
+        }
+
+        void TowerTick(DateTime now)
+        {
+            if (towerSpot == null || stripCats.Count != towerSpot.Length || towerBusy == null) return;
+            int n = stripCats.Count;
+            for (int i = 0; i < n; i++)
+            {
+                var v = stripCats[i];
+                if (v.Sleeping && now >= towerSleepUntil[i]) v.Sleeping = false;
+                // aufgewacht (oder gestreichelt) und liegt noch auf dem Kuschelplatz → steht auf
+                if (!v.Sleeping && !towerBusy[i] && towerSpot[i] >= 4 && now >= towerSleepUntil[i]) OnTowerWake(i);
+            }
+            if (now < towerNext || Ui.ReduceMotion) return;
+            towerNext = now.AddSeconds(4 + Rnd.NextDouble() * 5);
+
+            var awake = Enumerable.Range(0, n).Where(i => !stripCats[i].Sleeping && !towerBusy[i] && towerSpot[i] < 4).ToList();
+            if (awake.Count == 0) return;
+            double r = Rnd.NextDouble();
+            bool cuddling = towerSpot.Any(s => s >= 4);
+            if (!cuddling && awake.Count >= 2 && r < 0.22 && (now - lastCuddleEnd).TotalSeconds > 40) { StartCuddle(awake); return; }
+            if (r < 0.6 && CatView.Walk)
+            {
+                // Platz wechseln
+                int i = awake[Rnd.Next(awake.Count)];
+                var free = FreeTowerSpots();
+                if (free.Count > 0) JumpTo(i, free[Rnd.Next(free.Count)]);
+                return;
+            }
+            if (r < 0.9)
+            {
+                // einschlafen
+                int i = awake[Rnd.Next(awake.Count)];
+                towerSleepUntil[i] = now.AddSeconds(12 + Rnd.NextDouble() * 20);
+                stripCats[i].Sleeping = true;
+            }
+        }
+
+        List<int> FreeTowerSpots()
+        {
+            bool topTaken = towerSpot.Any(IsTopSpot);
+            return new[] { 0, 1, 2, 3 }.Where(s => !towerSpot.Contains(s) && !(s == 0 && topTaken)).ToList();
+        }
+
+        /// <summary>Zwei Katzen springen nach oben, legen sich nebeneinander (Köpfe zueinander) und schlafen.</summary>
+        void StartCuddle(List<int> awake)
+        {
+            var pick = awake.OrderBy(_ => Rnd.Next()).Take(2).ToArray();
+            for (int k = 0; k < towerSpot.Length; k++)
+                if (IsTopSpot(towerSpot[k]) && !pick.Contains(k)) return;   // oben liegt schon eine andere
+            var until = DateTime.Now.AddSeconds(18 + Rnd.NextDouble() * 18);
+            for (int k = 0; k < 2; k++)
+            {
+                int i = pick[k], target = 4 + k;
+                var v = stripCats[i];
+                var sleepArr = towerSleepUntil;
+                sleepArr[i] = until;
+                JumpTo(i, target, k * 450, () =>
+                {
+                    v.Face(target == 4);
+                    sleepArr[i] = until;
+                    v.Sleeping = true;
+                });
+            }
+        }
+
+        /// <summary>Vom Kuschelplatz aufstehen: die eine springt weg, die andere rutscht in die Mitte oben.</summary>
+        void OnTowerWake(int i)
+        {
+            lastCuddleEnd = DateTime.Now;
+            bool partnerThere = Enumerable.Range(0, towerSpot.Length).Any(k => k != i && towerSpot[k] >= 4);
+            if (partnerThere)
+            {
+                var free = FreeTowerSpots().Where(x => x != 0).ToList();
+                if (free.Count > 0) { JumpTo(i, free[Rnd.Next(free.Count)], 500); return; }
+            }
+            JumpTo(i, 0, 300);
+        }
+
+        /// <summary>Sprung im Bogen zu einem anderen Platz (schaut in Sprungrichtung).</summary>
+        void JumpTo(int i, int target, int delayMs = 0, Action landed = null)
+        {
+            var v = stripCats[i];
+            var busy = towerBusy;
+            towerSpot[i] = target;
+            busy[i] = true;
+            double off = v.TakeWalkOffset();
+            v.CanWalk = false;
+            var p0 = new Point(Canvas.GetLeft(v) + off, Canvas.GetTop(v));
+            Canvas.SetLeft(v, p0.X);
+            var p1 = SpotPos(target);
+            if (Math.Abs(p1.X - p0.X) > 1) v.Face(p1.X > p0.X);
+            double dist = Math.Abs(p1.X - p0.X) + Math.Abs(p1.Y - p0.Y);
+            var dur = TimeSpan.FromMilliseconds(Math.Max(420, Math.Min(900, 360 + dist * 4)));
+            var begin = TimeSpan.FromMilliseconds(delayMs);
+            double peak = Math.Min(p0.Y, p1.Y) - (dist < 25 ? 5 : 16);
+            var xa = new DoubleAnimation(p0.X, p1.X, dur) { BeginTime = begin, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+            var ya = new DoubleAnimationUsingKeyFrames { BeginTime = begin, Duration = dur };
+            ya.KeyFrames.Add(new DiscreteDoubleKeyFrame(p0.Y, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            ya.KeyFrames.Add(new EasingDoubleKeyFrame(peak, KeyTime.FromPercent(0.45), new CubicEase { EasingMode = EasingMode.EaseOut }));
+            ya.KeyFrames.Add(new EasingDoubleKeyFrame(p1.Y, KeyTime.FromPercent(1), new CubicEase { EasingMode = EasingMode.EaseIn }));
+            xa.Completed += (s, e) =>
+            {
+                v.BeginAnimation(Canvas.LeftProperty, null);
+                v.BeginAnimation(Canvas.TopProperty, null);
+                Canvas.SetLeft(v, p1.X);
+                Canvas.SetTop(v, p1.Y);
+                if (i < busy.Length) busy[i] = false;
+                ApplySpotRole(v, target);
+                landed?.Invoke();
+            };
+            v.BeginAnimation(Canvas.LeftProperty, xa);
+            v.BeginAnimation(Canvas.TopProperty, ya);
         }
 
         // =================================================================
@@ -1478,13 +1831,10 @@ namespace DynamicIsland
         readonly List<(long t, double x)> swipeSamples = new List<(long, double)>();
         double slideFrom;   // Startversatz der neuen Seite (nach einem Wisch näher an der Hand)
 
-        bool HasNeighbor(int dir)
-        {
-            var keys = PageKeys();
-            int i = keys.IndexOf(CurrentPageKey() ?? "dashboard");
-            int j = (i < 0 ? 0 : i) + dir;
-            return j >= 0 && j < keys.Count;
-        }
+        // Seiten liegen im Kreis: nach der letzten kommt wieder die erste (keine Kante, kein Gummiband).
+        bool HasNeighbor(int dir) => PageKeys().Count > 1;
+
+        static int WrapIndex(int i, int n) => n <= 0 ? 0 : ((i % n) + n) % n;
 
         /// <summary>Gummiband: je weiter über den Rand, desto weniger folgt der Inhalt.</summary>
         static double Rubberband(double over, double dim, double c = 0.55) => over * dim * c / (dim + c * Math.Abs(over));
@@ -1521,8 +1871,9 @@ namespace DynamicIsland
             int i = keys.IndexOf(CurrentPageKey() ?? "dashboard");
             if (i < 0) return;
             double wl = PageWLocal;
-            if (i + 1 < keys.Count) peekNext = MakePeek(keys[i + 1], wl);
-            if (i - 1 >= 0) peekPrev = MakePeek(keys[i - 1], -wl);
+            if (keys.Count < 2) return;
+            peekNext = MakePeek(keys[WrapIndex(i + 1, keys.Count)], wl);
+            peekPrev = MakePeek(keys[WrapIndex(i - 1, keys.Count)], -wl);
         }
 
         FrameworkElement MakePeek(string key, double x)
@@ -2051,15 +2402,15 @@ namespace DynamicIsland
         {
             var keys = PageKeys();
             int i = Math.Max(0, keys.IndexOf(CurrentPageKey() ?? "dashboard"));
-            int j = i + dir;
-            if (j < 0 || j >= keys.Count)
+            if (keys.Count < 2)
             {
-                // am Ende: kurz federn
+                // nur eine Seite: kurz federn
                 pillShift.BeginAnimation(TranslateTransform.XProperty, null);
                 pillShift.X = -dir * 14;
                 SpringBack();
                 return;
             }
+            int j = WrapIndex(i + dir, keys.Count);   // im Kreis: hinter der letzten Seite kommt die erste
             slideDir = dir;
             try { OpenPage(keys[j]); }
             finally { slideDir = 0; }
@@ -2212,7 +2563,7 @@ namespace DynamicIsland
 
         /// <summary>Island wird länger: großes App-Symbol, daneben der Inhalt (springt hinein, gleitet nach).</summary>
         /// <summary>Spotlight für ein Ereignis: nimmt die eigene Farbe aus den Einstellungen (Symbol, Leuchten).</summary>
-        public void SpotlightE(string evt, Func<FrameworkElement> icon, Color c, string title, string sub, double seconds = 3.5, Func<bool> tap = null)
+        public void SpotlightE(string evt, Func<FrameworkElement> icon, Color c, string title, string sub, double seconds = 3.5, Func<bool> tap = null, Color? titleColor = null)
         {
             if (HasEventColor(evt))
             {
@@ -2226,7 +2577,7 @@ namespace DynamicIsland
                     return el;
                 };
             }
-            Spotlight(icon, c, title, sub, seconds, tap, evt);
+            Spotlight(icon, c, title, sub, seconds, tap, evt, titleColor);
             if (AnimMode(evt) == "appglow" && !Ui.ReduceMotion)
             {
                 // App + Licht: erst die Island strecken, dann läuft das Licht
@@ -2238,13 +2589,26 @@ namespace DynamicIsland
             }
         }
 
-        public void Spotlight(Func<FrameworkElement> icon, Color c, string title, string sub, double seconds = 3.5, Func<bool> tap = null, string category = null)
+        public void Spotlight(Func<FrameworkElement> icon, Color c, string title, string sub, double seconds = 3.5, Func<bool> tap = null, string category = null, Color? titleColor = null)
         {
             expandedAct = null;
-            var s = new SpotlightActivity(icon, c, title, sub, seconds, tap) { Host = this, Category = category };
+            var s = new SpotlightActivity(icon, c, title, sub, seconds, tap) { Host = this, Category = category, TitleColor = titleColor };
             s.Id = "spotlight-" + (category ?? "other");   // eigene Kennung pro Art → stellen sich an statt sich zu ersetzen
+            if (category == "claude") s.ReserveRight = 18;  // rechte Ecke für das ✓ aus dem Kreis
             Add(s);
             foreach (var cat in catViews.Concat(stripCats)) cat.Hop();
+        }
+
+        /// <summary>Claude-Logo in der eingestellten Farbe (das ✓ sitzt rechts in der Ecke, siehe UpdateDoneCheck).</summary>
+        static FrameworkElement ClaudeDoneIcon()
+        {
+            var g = new Grid { Width = 28, Height = 28 };
+            var col = ClaudeActivity.DoneColor();   // eingestellte Farbe für „Claude ist fertig“
+            var logo = Logos.Claude(22, 1, col);
+            logo.HorizontalAlignment = HorizontalAlignment.Center;
+            logo.VerticalAlignment = VerticalAlignment.Center;
+            g.Children.Add(logo);
+            return g;
         }
 
         /// <summary>Claude ist fertig: App im Vordergrund oder die gewählte Animation.</summary>
@@ -2253,8 +2617,8 @@ namespace DynamicIsland
             if (SpotlightOn("claude"))
             {
                 string sub = (string.IsNullOrEmpty(a.Project) ? "" : a.Project + " · ") + "nach " + ClaudeActivity.Dur(a.DoneAfter);
-                SpotlightE("claude", () => Logos.Claude(22), Logos.ClaudeOrange, "Claude ist fertig", sub, 4.5,
-                          () => { pinnedId = a.Id; Relayout(); return true; });
+                SpotlightE("claude", ClaudeDoneIcon, Logos.ClaudeOrange, "Claude ist fertig", sub, 4.5,
+                          () => { pinnedId = a.Id; Relayout(); return true; }, ClaudeActivity.DoneColor());
             }
             else Celebrate(Logos.ClaudeOrange, "claude");
         }
@@ -2267,7 +2631,7 @@ namespace DynamicIsland
             if (mode != "app" && mode != "appglow") { Celebrate(c, key, true, mode); return; }
             switch (key)
             {
-                case "claude": SpotlightE("claude", () => Logos.Claude(22), Logos.ClaudeOrange, "Claude ist fertig", "Dyamicisland+ · nach 3:12"); break;
+                case "claude": SpotlightE("claude", ClaudeDoneIcon, Logos.ClaudeOrange, "Claude ist fertig", "Dyamicisland+ · nach 3:12", titleColor: ClaudeActivity.DoneColor()); break;
                 case "timer": SpotlightE("timer", () => Ui.Glyph("", 18, Ui.Br(Ui.Orange)), Ui.Orange, "Timer abgelaufen", DateTime.Now.ToString("HH:mm")); break;
                 case "download": SpotlightE("download", () => Ui.Glyph("", 18, Ui.Br(Ui.Green)), Ui.Green, "Download fertig", "Beispiel.zip · 24,3 MB"); break;
                 case "copy": SpotlightE("copy", () => Ui.Glyph("", 18, Ui.Br(Ui.Teal)), Ui.Teal, "Kopiert", "Beispieltext aus der Zwischenablage", 2.5); break;
@@ -2571,6 +2935,22 @@ namespace DynamicIsland
             return false;
         }
 
+        /// <summary>
+        /// Island fest in der Mitte: links ein unsichtbarer Platzhalter so breit wie rechts Kreis + Kamera-/Mikro-Punkte.
+        /// Sonst wird Pille + Kreis zusammen zentriert und die Pille rutscht bei jedem Kreis ~22 px nach links.
+        /// </summary>
+        void UpdateBubbleSpacer()
+        {
+            if (bubbleSpacer == null || bubble == null || dotsPanel == null) return;
+            double w = 0;
+            if (Settings.IslandFixedCenter)
+            {
+                double bw = double.IsNaN(bubble.Width) ? bubble.ActualWidth : bubble.Width;
+                w = Math.Max(0, bw + bubble.Margin.Left) + dotsPanel.ActualWidth + dotsPanel.Margin.Left;
+            }
+            if (Math.Abs(bubbleSpacer.Width - w) > 0.1) bubbleSpacer.Width = w;
+        }
+
         void UpdateCatsSpacer()
         {
             double w = catViews.Count > 0 ? catsPanel.ActualWidth + catsPanel.Margin.Left : 0;
@@ -2583,7 +2963,8 @@ namespace DynamicIsland
         {
             lastActive = DateTime.Now;
             lastInteraction = DateTime.Now;
-            if (v == topCat) topCatAwake = DateTime.Now;
+            int ti = stripCats.IndexOf(v);
+            if (ti >= 0 && towerSleepUntil != null && ti < towerSleepUntil.Length) towerSleepUntil[ti] = DateTime.Now;   // gestreichelt → bleibt wach
             v.Purr();
             if (expandedAct != null) return;
             var cfg = v.Config;
@@ -3121,9 +3502,13 @@ namespace DynamicIsland
                 // Case neben dem PC geöffnet → Akku-Karte wie am iPhone.
                 // Aber nur, wenn eigene AirPods mit diesem PC gekoppelt sind – sonst klappte die Island
                 // bei jedem fremden AirPods-Case in der Nähe auf („Bluetooth geht ohne Grund auf“).
+                // „Gekoppelt“ reichte nicht: dann klappte jedes fremde Case in der Nähe (oder ein flackerndes eigenes) die
+                // Island auf. Jetzt nur, wenn deine AirPods wirklich mit dem PC verbunden sind – nach dem Öffnen
+                // verbinden sie sich meist innerhalb weniger Sekunden, darum kurz darauf warten.
                 AirPods.CaseOpened += async st =>
                 {
-                    if (AirPodsConnected || await HasPairedAirPodsAsync()) ShowAirPods(true);
+                    for (int i = 0; i < 5 && !AirPodsConnected; i++) await Task.Delay(1500);
+                    if (AirPodsConnected && expandedAct == null) ShowAirPods(true);
                 };
                 AirPods.StatusChanged += st =>
                 {
@@ -3433,8 +3818,7 @@ namespace DynamicIsland
             {
                 var nowS = DateTime.Now;
                 foreach (var c in stripCats) c.Tick(nowS);
-                if (topCat != null && !topCat.Sleeping && (nowS - topCatAwake).TotalSeconds > TopCatNapAfter)
-                    topCat.Sleeping = true;
+                TowerTick(nowS);
             }
             if (tickCount % 20 == 0) Downloads.Poll();
             if (Spotify.Connected)
@@ -4365,7 +4749,10 @@ namespace DynamicIsland
             }
             LiquidGlass.Configure(Settings.Material != "flat", Settings.GlassTint);
             Ui.Accent = Ui.ParseColor(Settings.AccentColor, Ui.Blue);
-            Ui.CompactAlerts = Settings.AlertSize != "normal";   // Hinweise klein und schlicht
+            Ui.AlertDesign = Settings.AlertSize ?? "small";      // Design der Hinweise (klein, groß, Mitteilung, minimal, leuchtend)
+            Ui.CompactAlerts = Ui.AlertDesign == "small" || Ui.AlertDesign == "minimal";
+            CatView.CurlUp = Settings.CatsCurl;   // Katzen: im Schlaf einrollen
+            CatView.Walk = Settings.CatsWalk;     // Katzen: neben der Island herumlaufen
             Ui.AlertMotion = Settings.AlertMotion ?? "slide";
             Ui.SpotifyAccent = Ui.ParseColor(Settings.SpotifyColor, Color.FromRgb(0x1E, 0xD7, 0x60));
             RefreshCats();

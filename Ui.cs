@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -58,6 +58,8 @@ namespace DynamicIsland
         public static bool ReduceMotion => !SystemParameters.ClientAreaAnimation;
         /// <summary>Hinweise klein und schlicht (Einstellungen → Animationen → Größe der Hinweise).</summary>
         public static bool CompactAlerts = true;
+        /// <summary>Design der Hinweise: small, normal, ios, minimal, glow.</summary>
+        public static string AlertDesign = "small";
         /// <summary>Erscheinen von Hinweisen: slide · morph · none.</summary>
         public static string AlertMotion = "slide";
 
