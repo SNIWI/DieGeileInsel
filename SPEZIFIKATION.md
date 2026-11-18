@@ -235,12 +235,10 @@ Pro Ereignis wählbar (*Einstellungen → Animationen*): **Aus · App · App + L
 
 - **Farbe pro Ereignis:** Farbpunkt anklicken → Standard oder eine von 10 Farben; gilt für Symbol, Kreis und Licht.
 - **Licht-Effekte** (Standard + pro Ereignis überschreibbar): **Umlauf** (Lichtstreifen läuft einmal um die Island), **Schein** (weicher Schimmer dahinter), **Glanz** (Reflex zieht über die Island), **Rahmen** (Rand leuchtet zweimal). Das Licht hat immer die Farbe des Ereignisses.
-- **Erscheinen von Hinweisen:** **Schieben** (Standard: Island wird sanft länger, Inhalt gleitet herein, ohne Federn), **Tropfen** (federnder Apple-Morph), **Ohne**.
-- **Design der Hinweise** (`AlertSize`, `AlertLook.cs`), gilt für Kurz-Meldungen und Banner: **Klein** (Standard, eine Zeile, kleines Symbol im getönten Kreis) · **Groß** (großes Symbol mit Leuchten, zwei Zeilen) · **Mitteilung** (iPhone-Stil: Symbol im abgerundeten Quadrat, Titel + „jetzt“, darunter der Text) · **Minimal** (nur farbiges Symbol, schmale Zeile) · **Leuchtend** (Symbol im leuchtenden Kreis, farbiger Schimmer von links, Titel in der Ereignisfarbe). Vorschau-Knöpfe für Claude und Gerät.
 
 | Ereignis | Spotlight-Inhalt |
 |---|---|
-| Claude ist fertig | Claude-Logo mit ✓ · Projekt · Dauer |
+| Claude ist fertig | Claude-Logo · Projekt · Dauer, ✓ am rechten Rand |
 | Timer abgelaufen | Timer-Symbol · Uhrzeit |
 | Download / Spiel fertig | Datei bzw. Spiel · Größe/Store |
 | Kopieren | Zwischenablage-Symbol · Textanfang |
@@ -248,6 +246,11 @@ Pro Ereignis wählbar (*Einstellungen → Animationen*): **Aus · App · App + L
 
 Katzen hüpfen bei jeder Animation mit. „Bewegungen reduzieren“ (Windows) schaltet Animationen ab.
 
+### 8.11 Hinweise (Einstellungen → Hinweise)
+- **Aussehen:** Design (`AlertSize`, `AlertLook.cs`), gilt für Kurz-Meldungen und Banner: **Klein** (Standard, eine Zeile, kleines Symbol im getönten Kreis) · **Groß** (großes Symbol mit Leuchten, zwei Zeilen) · **Mitteilung** (iPhone-Stil: Symbol im abgerundeten Quadrat, Titel + „jetzt“, darunter der Text) · **Minimal** (nur farbiges Symbol, schmale Zeile) · **Leuchtend** (Symbol im leuchtenden Kreis, farbiger Schimmer von links, Titel in der Ereignisfarbe). Erscheinen: **Schieben** (Standard), **Tropfen** (federnder Apple-Morph), **Ohne**. Vorschau-Knöpfe für Claude (Kurz-Meldung), Gerät und Nachricht (Banner) – unabhängig von der Animation pro Ereignis.
+- **Kurz in der Island anzeigen:** Lautstärke, Kopieren, Feststelltaste, Geräte, Kamera-/Mikro-Punkte, Downloads.
+- **Mitteilungen & Anrufe:** Windows-Mitteilungen erscheinen als Banner in der Farbe von „Neue Nachricht“ (nicht in der Akzentfarbe). Mitteilungen der **Claude-App** werden nicht als Chat-Nachricht gezeigt: Kam gerade (≤ 45 s) ein Hook-Signal, gar nicht (die Island zeigt es schon), sonst als Claude-Meldung in der eingestellten Farbe (fertig) bzw. gelb (wartet).
+- **Reihenfolge bei mehreren Hinweisen** (`AlertPriority`): oben zuerst; ein wichtigerer Hinweis unterbricht einen weniger wichtigen.
 ---
 
 ## 9. Schnittstellen
@@ -276,10 +279,10 @@ Gespeichert in `%APPDATA%\DynamicIsland\einstellungen.json`. Gruppen (Auswahl):
 | Größe & Position | `PageScale`, `PageWide`, `Scale`, `PosX`, `PosY`, `MonitorName` |
 | Aussehen | `AccentColor`, `NavIconsColor`, `IdlePill`, `Material`, `GlassTint`, `SpotifyColor` |
 | Ausblenden | `AutoHide`, `HideWithActivities`, `HideDelay`, `HideInFullscreen` |
-| Animationen | `AnimModes` (Ereignis → Art), `AnimColors`, `GlowStyle`, `GlowStyles`, `AlertSize` (Design: `small`/`normal`/`ios`/`minimal`/`glow`), `AlertMotion`, `AlertPriority` |
+| Animationen | `AnimModes` (Ereignis → Art), `AnimColors`, `GlowStyle`, `GlowStyles` |
 | Timer | `LastTimerSeconds` |
 | Seiten | `Pages`, `WidgetPages`, `DashboardTiles` |
-| Hinweise | `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads` |
+| Hinweise | `AlertSize` (Design: `small`/`normal`/`ios`/`minimal`/`glow`), `AlertMotion`, `AlertPriority`, `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads` |
 | Katzen | `CatsMode` (`expanded`/`always`/`off`), `CatsStayVisible`, `CatsCurl`, `CatsWalk`, `Cats` |
 | Dienste | Spotify-, Discord-, To-Do-, Gemini-, Kalender-, Wetter-, AirPods-, Claude-Einstellungen |
 
@@ -297,6 +300,14 @@ Migrationen laufen beim Laden automatisch (z. B. neue Seiten einfügen, „Wette
 - Wetter: nur Ortsname bzw. ungefähre Koordinaten an Open-Meteo.
 
 ---
+
+### 12.1 Robustheit (Stand Fehlerprüfung)
+- **Vollbild-Erkennung:** Maximierte Fenster ohne Titelleiste (Claude, Discord, VS Code – Electron) gelten nicht als Vollbild; die Island versteckt sich nur bei echten Vollbild-Spielen/-Videos.
+- **Einstellungen** werden sicher gespeichert (Hilfsdatei → Austausch, vorige Fassung als `.bak`). Ist die Datei kaputt, wird `.bak` geladen und die kaputte als `.bad` aufgehoben.
+- **Windows-Mitteilungen:** einzelne Lesefehler werden übersprungen; nach mehreren Fehlern oder einem Startfehler verbindet sich die Island mit wachsendem Abstand (30 s … 10 min) neu, statt für immer aus zu bleiben.
+- **Discord:** normales Trennen (Discord startet neu/wird beendet) landet nicht mehr im Fehlerprotokoll und wird erneut versucht; nur ein echter CLOSE-Rahmen gilt als „abgelehnt“.
+- **Claude:** „Esc“ zählt nur, wenn die neueste Nutzer-Zeile im Verlauf der Abbruch-Vermerk ist; die Prozessregel greift nur, wenn während der Aufgabe ein `claude`-Prozess lief (npm-Installationen laufen als node.exe). Antippen von „Claude ist fertig“ pinnt die Sitzung 30 s; der Pin endet mit der Aktivität.
+- **Kratzbaum** liegt als feste Ebene über den Seiten (wird beim Wischen/Neuaufbau nicht neu gebaut); die Katzen verteilen sich neu, wenn die Island über 40 s zu war.
 
 ## 12. Bauen & Veröffentlichen
 

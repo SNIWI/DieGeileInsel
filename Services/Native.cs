@@ -198,6 +198,7 @@ namespace DynamicIsland
         }
         delegate bool MonitorEnumProc(IntPtr mon, IntPtr hdc, IntPtr rect, IntPtr data);
         [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+        [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr hWnd);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetMonitorInfoW")] static extern bool GetMonitorInfoEx(IntPtr mon, ref MONITORINFOEX mi);
         [DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc cb, IntPtr data);
 
@@ -234,6 +235,9 @@ namespace DynamicIsland
             if (cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd") return false;
             long style = (long)GetWindowLongPtr(h, GWL_STYLE);
             if ((style & WS_CAPTION) == WS_CAPTION) return false;
+            // maximierte Fenster ohne Titelleiste (Claude, Discord, VS Code … – Electron) ragen über den ganzen Bildschirm,
+            // sind aber kein Vollbild-Spiel/-Video: sonst versteckte sich die Island, sobald so ein Fenster vorne ist
+            if (IsZoomed(h)) return false;
             if (!GetWindowRect(h, out var r)) return false;
             var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
             var fgMon = MonitorFromWindow(h, 2);

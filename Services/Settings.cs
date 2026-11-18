@@ -47,7 +47,7 @@ namespace DynamicIsland
         public string GlowStyle { get; set; } = "orbit";
         /// <summary>Licht-Effekt pro Ereignis (leer/fehlt = der allgemeine GlowStyle).</summary>
         public Dictionary<string, string> GlowStyles { get; set; } = new Dictionary<string, string>();
-        /// <summary>Größe der Hinweise in der Island: small (klein und schlicht) oder normal.</summary>
+        /// <summary>Hinweis-Design (alter Name „AlertSize“ bleibt für die Kompatibilität): small, normal, ios, minimal, glow.</summary>
         /// <summary>Design der Hinweise: small (klein), normal (groß), ios (Mitteilung), minimal, glow (leuchtend).</summary>
         public string AlertSize { get; set; } = "small";
         /// <summary>Pille bleibt genau in der Mitte, auch wenn rechts der kleine Kreis erscheint.</summary>
@@ -189,7 +189,15 @@ namespace DynamicIsland
                 if (File.Exists(FilePath))
                     s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath));
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // kaputte Datei: Sicherung (.bak vom letzten Speichern) nehmen und die kaputte als .bad aufheben,
+                // statt alles still auf Standard zurückzusetzen und gleich zu überschreiben
+                Program.Log(ex);
+                try { File.Copy(FilePath, FilePath + ".bad", true); } catch { }
+                try { if (File.Exists(FilePath + ".bak")) s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath + ".bak")); }
+                catch (Exception ex2) { Program.Log(ex2); }
+            }
             s ??= new Settings();
             s.Cats ??= new List<CatConfig>();
             s.CatsMode ??= s.ShowCats ? "expanded" : "off";
@@ -332,9 +340,21 @@ namespace DynamicIsland
             try
             {
                 Directory.CreateDirectory(Program.DataDir);
-                File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+                // sicher speichern: erst in eine Hilfsdatei, dann austauschen (alte Fassung bleibt als .bak) –
+                // ein Absturz/Herunterfahren mitten im Schreiben zerstört so nie die Einstellungen
+                var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+                var tmp = FilePath + ".tmp";
+                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var w = new StreamWriter(fs, new System.Text.UTF8Encoding(false)))
+                {
+                    w.Write(json);
+                    w.Flush();
+                    fs.Flush(true);
+                }
+                if (File.Exists(FilePath)) File.Replace(tmp, FilePath, FilePath + ".bak", true);
+                else File.Move(tmp, FilePath);
             }
-            catch { }
+            catch (Exception ex) { Program.Log(ex); }
         }
     }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -19,6 +19,19 @@ namespace DynamicIsland
     {
         readonly HashSet<uint> seen = new HashSet<uint>();
         bool ok, primed, busy;
+        int failures;                       // Lesefehler hintereinander
+        DateTime retryAt = DateTime.MaxValue;
+        TimeSpan backoff = TimeSpan.FromSeconds(30);
+        bool unsupported;                   // „geht für diese App nicht“ – nie erneut versuchen
+
+        /// <summary>Nach einem Fehler später neu verbinden (statt für immer aus zu bleiben).</summary>
+        public bool WantsRetry => !ok && !unsupported && Status != "aus" && DateTime.Now >= retryAt;
+
+        void ScheduleRetry()
+        {
+            retryAt = DateTime.Now + backoff;
+            backoff = TimeSpan.FromSeconds(Math.Min(600, backoff.TotalSeconds * 2));
+        }
 
         public string Status { get; private set; } = "aus";
         public bool Active => ok;
@@ -32,6 +45,8 @@ namespace DynamicIsland
             {
                 var st = await UserNotificationListener.Current.RequestAccessAsync();
                 ok = st == UserNotificationListenerAccessStatus.Allowed;
+                if (ok) { failures = 0; backoff = TimeSpan.FromSeconds(30); retryAt = DateTime.MaxValue; }
+                else ScheduleRetry();
                 Status = ok ? "aktiv"
                     : st == UserNotificationListenerAccessStatus.Denied
                         ? "Windows erlaubt den Zugriff nicht. Gib ihn in den Windows-Einstellungen unter Mitteilungen frei."
@@ -41,7 +56,10 @@ namespace DynamicIsland
             {
                 ok = false;
                 Status = "Windows unterstützt das für diese App leider nicht (" + ex.Message.Trim() + ")";
-                Program.Log(ex);
+                // „nicht unterstützt“ bleibt so; andere Fehler (z. B. beim Anmelden noch nicht bereit) später erneut
+                unsupported = ex is NotSupportedException || ex is NotImplementedException;
+                if (!unsupported) ScheduleRetry();
+                if (failures++ == 0) Program.Log(ex);
             }
             primed = false;
             seen.Clear();
@@ -51,6 +69,7 @@ namespace DynamicIsland
         public void Disable()
         {
             ok = false;
+            retryAt = DateTime.MaxValue;
             Status = "aus";
         }
 
@@ -87,12 +106,18 @@ namespace DynamicIsland
                 seen.Clear();
                 seen.UnionWith(now);
                 primed = true;
+                failures = 0;
             }
             catch (Exception ex)
             {
-                Program.Log(ex);
-                ok = false;
-                Status = "Fehler beim Lesen der Mitteilungen – ausgeschaltet";
+                // einzelne Lesefehler überstehen; erst nach mehreren hintereinander pausieren und später neu verbinden
+                if (failures++ == 0) Program.Log(ex);
+                if (failures >= 3)
+                {
+                    ok = false;
+                    Status = "Mitteilungen gerade nicht lesbar – neuer Versuch gleich";
+                    ScheduleRetry();
+                }
             }
             finally { busy = false; }
         }

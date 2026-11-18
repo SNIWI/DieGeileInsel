@@ -73,6 +73,8 @@ namespace DynamicIsland
         public Color Accent = Ui.Blue;
         public string LeftText, RightText, Title, Subtitle, Detail;
         public Color? RightColor;
+        /// <summary>Farbe des linken Texts (Pille) bzw. des Titels (Banner, groß) – sonst Weiß bzw. je nach Design.</summary>
+        public Color? LeftColor, TitleColor;
         public double? Progress;
         public bool BarInCompact;          // Fortschrittsbalken in der kleinen Pille (z. B. Lautstärke)
         public bool Banner;                // größere Pille mit Titel + Untertitel
@@ -88,7 +90,8 @@ namespace DynamicIsland
         TextBlock cIcon, cLeft, cRight, bTitle, bSub, eIcon, eTitle, eSub, eRight, eDetail, mIcon;
         Border bCircle, eCircle;
         Bar cBar, eBar;
-        Color brushColor;
+        Color brushColor, boxColor;
+        string boxDesign;
         SolidColorBrush brushCache;
 
         public override bool CanExpand => Expandable;
@@ -130,7 +133,10 @@ namespace DynamicIsland
         FrameworkElement BuildPill()
         {
             cIcon = Ui.Glyph(Glyph, 15, Acc(), GlyphFont);
-            cLeft = Ui.Text(LeftText, 13, Ui.White, true, true);
+            cLeft = Ui.Text(LeftText, 13, LeftColor.HasValue ? Ui.Br(LeftColor.Value) : Ui.White, true, true);
+            // langer Text (z. B. „Führt aus: …“ bei Claude) wird mit … gekürzt, statt die Zeit rechts aus der Pille zu schieben
+            cLeft.TextTrimming = TextTrimming.CharacterEllipsis;
+            cLeft.MaxWidth = BarInCompact ? CompactWidth * 0.45 : Math.Max(40, CompactWidth - 28 - 22 - 60);
             var left = Ui.HStack(7, cIcon, cLeft);
             UIElement middle = null;
             if (BarInCompact)
@@ -158,22 +164,38 @@ namespace DynamicIsland
             AlertLook.StyleBox(bCircle, Accent, AlertLook.BannerIcon);
             cIcon = Ui.Glyph(Glyph, AlertLook.D == "minimal" ? 16 : Ui.CompactAlerts ? 15 : 19, Acc(), GlyphFont);
             bCircle.Child = cIcon;
-            bTitle = Ui.Text(Title, Ui.CompactAlerts ? 13.5 : 14.5, AlertLook.TitleBrush(Accent, null));
+            bTitle = Ui.Text(Ui.OneLine(Title), Ui.CompactAlerts ? 13.5 : 14.5, AlertLook.TitleBrush(Accent, TitleColor));
             bTitle.TextTrimming = TextTrimming.CharacterEllipsis;
-            bSub = Ui.Text(Subtitle, Ui.CompactAlerts ? 11.5 : 12, Ui.Dim, false);
+            bSub = Ui.Text(Ui.OneLine(Subtitle), Ui.CompactAlerts ? 11.5 : 12, Ui.Dim, false);
             bSub.TextTrimming = TextTrimming.CharacterEllipsis;
-            var texts = Ui.VStack(1, bTitle, bSub);
+            StackPanel texts;
+            if (AlertLook.D == "minimal")
+            {
+                // eine Zeile: Titel links, Text füllt den Rest – DockPanel gibt beiden eine feste Breite, damit „…“ greift
+                bSub.Margin = new Thickness(8, 1, 0, 0);
+                bSub.VerticalAlignment = bTitle.VerticalAlignment = VerticalAlignment.Center;
+                bTitle.MaxWidth = 190;
+                var line = new DockPanel { LastChildFill = true };
+                DockPanel.SetDock(bTitle, Dock.Left);
+                line.Children.Add(bTitle);
+                line.Children.Add(bSub);
+                texts = Ui.VStack(0, line);
+            }
+            else texts = Ui.VStack(1, bTitle, bSub);
             if (Progress.HasValue)
             {
                 cBar = new Bar(4, Acc()) { Margin = new Thickness(0, 6, 0, 0) };
                 texts.Children.Add(cBar);
             }
             texts.Margin = new Thickness(AlertLook.D == "minimal" ? 7 : 11, 0, 8, 0);
-            if (AlertLook.D == "minimal") { bSub.Visibility = string.IsNullOrEmpty(Subtitle) ? Visibility.Collapsed : Visibility.Visible; texts.Orientation = Orientation.Horizontal; bSub.Margin = new Thickness(8, 1, 0, 0); bSub.VerticalAlignment = bTitle.VerticalAlignment = VerticalAlignment.Center; }
+            texts.VerticalAlignment = VerticalAlignment.Center;
             UIElement right;
             if (Buttons.Count > 0) right = ButtonsPanel(Ui.CompactAlerts ? 30 : 38);
             else if (RightFactory != null) right = RightFactory();
             else { cRight = Ui.Text(RightText, 15, Ui.Br(RightColor ?? Accent), true, true); right = cRight; }
+            // Akku-Ring, Avatar … passen in jede Banner-Höhe (Minimal ist nur 40 px hoch)
+            if (right != null && Buttons.Count == 0 && RightFactory != null)
+                right = new Viewbox { Child = right, Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly, MaxHeight = AlertLook.BannerHeight - 6, VerticalAlignment = VerticalAlignment.Center };
             var g = Ui.Row3(bCircle, texts, right, Ui.CompactAlerts ? new Thickness(9, 0, 12, 0) : new Thickness(14, 0, 16, 0));
             Refresh();
             return AlertLook.WithWash(g, Accent);
@@ -256,19 +278,31 @@ namespace DynamicIsland
         {
             var acc = Acc();
             SetGlyph(cIcon, acc); SetGlyph(eIcon, acc); SetGlyph(mIcon, acc);
-            if (bCircle != null) AlertLook.StyleBox(bCircle, Accent, AlertLook.BannerIcon);
-            if (eCircle != null) eCircle.Background = Ui.Br(Accent, 55);
+            // Symbol-Fläche nur neu einfärben, wenn sich Farbe oder Design geändert hat (nicht bei jedem Tick neue Pinsel)
+            if (bCircle != null && (boxColor != Accent || boxDesign != AlertLook.D))
+            {
+                boxColor = Accent; boxDesign = AlertLook.D;
+                AlertLook.StyleBox(bCircle, Accent, AlertLook.BannerIcon);
+            }
+            // Farben nur bei Änderung neu setzen (Refresh läuft ~20× pro Sekunde)
+            if (eCircle != null && !(eCircle.Background is SolidColorBrush eb && eb.Color == Color.FromArgb(55, Accent.R, Accent.G, Accent.B)))
+                eCircle.Background = Ui.Br(Accent, 55);
             if (cLeft != null)
             {
                 cLeft.Text = LeftText ?? "";
+                Ui.SetFg(cLeft, LeftColor ?? Ui.WhiteC);
                 cLeft.Visibility = string.IsNullOrEmpty(LeftText) ? Visibility.Collapsed : Visibility.Visible;
             }
-            var rightBrush = RightColor.HasValue ? Ui.Br(RightColor.Value) : acc;
-            if (cRight != null) { cRight.Text = RightText ?? ""; cRight.Foreground = rightBrush; }
-            if (eRight != null) { eRight.Text = RightText ?? ""; eRight.Foreground = rightBrush; }
-            if (bTitle != null) bTitle.Text = Title ?? "";
-            if (bSub != null) bSub.Text = Subtitle ?? "";
-            if (eTitle != null) eTitle.Text = Title ?? LeftText ?? "";
+            var rightCol = RightColor ?? Accent;
+            if (cRight != null) { cRight.Text = RightText ?? ""; Ui.SetFg(cRight, rightCol); }
+            if (eRight != null) { eRight.Text = RightText ?? ""; Ui.SetFg(eRight, rightCol); }
+            if (bTitle != null) { bTitle.Text = Ui.OneLine(Title) ?? ""; Ui.SetFg(bTitle, AlertLook.TitleColorOf(Accent, TitleColor)); }
+            if (bSub != null)
+            {
+                bSub.Text = Ui.OneLine(Subtitle) ?? "";
+                if (AlertLook.D == "minimal") bSub.Visibility = string.IsNullOrEmpty(Subtitle) ? Visibility.Collapsed : Visibility.Visible;
+            }
+            if (eTitle != null) { eTitle.Text = Title ?? LeftText ?? ""; Ui.SetFg(eTitle, TitleColor ?? Ui.WhiteC); }
             if (eSub != null) eSub.Text = Subtitle ?? "";
             if (eDetail != null) eDetail.Text = Detail ?? "";
             if (Progress.HasValue)
@@ -281,9 +315,9 @@ namespace DynamicIsland
         void SetGlyph(TextBlock t, Brush b)
         {
             if (t == null) return;
-            t.Text = Glyph;
-            t.FontFamily = GlyphFont;
-            t.Foreground = b;
+            if (t.Text != Glyph) t.Text = Glyph;
+            if (t.FontFamily != GlyphFont) t.FontFamily = GlyphFont;
+            if (!ReferenceEquals(t.Foreground, b)) t.Foreground = b;
         }
 
         public override bool OnTap() => TapAction != null && TapAction();

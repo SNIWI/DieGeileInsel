@@ -466,15 +466,16 @@ namespace DynamicIsland
             var sizeKeys = AlertLook.Designs.Select(d => d.Key).ToArray();
             sizeCard.Children.Add(SegmentRow("Design", AlertLook.Designs.Select(d => d.Name).ToArray(),
                 Math.Max(0, Array.IndexOf(sizeKeys, s.AlertSize ?? "small")),
-                i => { s.AlertSize = sizeKeys[i]; Apply(); host.TestEvent("claude", Ui.Teal); }));
+                i => { s.AlertSize = sizeKeys[i]; Apply(); host.PreviewAlert("claude"); }));
             sizeCard.Children.Add(Divider());
-            sizeCard.Children.Add(ButtonRow(SmallButton("Vorschau: Claude", () => host.TestEvent("claude", Ui.Teal)),
-                                            SmallButton("Vorschau: Gerät", () => host.TestEvent("device", Ui.Purple))));
+            sizeCard.Children.Add(ButtonRow(SmallButton("Vorschau: Claude", () => host.PreviewAlert("claude")),
+                                            SmallButton("Vorschau: Gerät", () => host.PreviewAlert("device")),
+                                            SmallButton("Vorschau: Nachricht", () => host.PreviewAlert("message"))));
             sizeCard.Children.Add(Divider());
             var motionKeys = new[] { "slide", "morph", "none" };
             sizeCard.Children.Add(SegmentRow("Erscheinen", new[] { "Schieben", "Tropfen (federnd)", "Ohne" },
                 Math.Max(0, Array.IndexOf(motionKeys, s.AlertMotion ?? "slide")),
-                i => { s.AlertMotion = motionKeys[i]; Apply(); host.TestEvent("copy", Ui.Teal); }));
+                i => { s.AlertMotion = motionKeys[i]; Apply(); host.PreviewAlert("claude"); }));
             root.Children.Add(Card(sizeCard));
             root.Children.Add(Footer("Klein: flache Pille mit kleinem Symbol und einer Zeile. Groß: großes Symbol mit Leuchten, zwei Zeilen. " +
                                      "Mitteilung: wie beim iPhone – App-Symbol im abgerundeten Quadrat, Titel mit „jetzt“, darunter der Text. " +
@@ -809,6 +810,8 @@ namespace DynamicIsland
             show.Children.Add(Divider());
             show.Children.Add(ToggleRow("Bei „Daneben“: sichtbar bleiben, wenn die Island wegfährt", s.CatsStayVisible, v => { s.CatsStayVisible = v; Changed(); }, out _));
             root.Children.Add(Card(show));
+            root.Children.Add(Footer("„In der Island“: Sobald du die Island groß machst, sitzen deine Katzen seitlich in der Island auf ihrem Kratzbaum. " +
+                                     "„Daneben“: Sie sitzen immer rechts neben der Island."));
 
             root.Children.Add(Header("Verhalten"));
             var act = new StackPanel();
@@ -817,9 +820,7 @@ namespace DynamicIsland
             act.Children.Add(ToggleRow("Herumlaufen", s.CatsWalk, v => { s.CatsWalk = v; Changed(); }, out _));
             root.Children.Add(Card(act));
             root.Children.Add(Footer("Eingerollt schlafen sie mit dem Schwanz um den Körper und strecken sich beim Aufwachen. " +
-                                     "Beim Herumlaufen trippeln sie ab und zu hin und her (neben der Island oder unten am Kratzbaum) – verspielte öfter, verschlafene seltener."));
-            root.Children.Add(Footer("„In der Island“: Sobald du die Island groß machst, sitzen deine Katzen seitlich in der Island auf ihrem Kratzbaum. " +
-                                     "„Daneben“: Sie sitzen immer rechts neben der Island."));
+                                     "Beim Herumlaufen trippeln sie ab und zu hin und her (neben der Island oder unten am Kratzbaum) und wechseln am Kratzbaum die Plätze – verspielte öfter, verschlafene seltener."));
 
             root.Children.Add(Header("Deine Katzen"));
             catList = new StackPanel();
@@ -861,7 +862,7 @@ namespace DynamicIsland
                 FilledSmall(host.Spotify.Connected ? "Neu verbinden" : "Verbinden", async () =>
                 {
                     SaveSpotifyId();
-                    if (await host.Spotify.LoginAsync()) Later(() => ShowPage("spotify"));
+                    if (await host.Spotify.LoginAsync()) Later(() => { if (page == "spotify") ShowPage("spotify"); });
                 }),
                 SmallButton("Developer Dashboard", () => IslandWindow.Open("https://developer.spotify.com/dashboard")),
                 SmallButton("Abmelden", () => { host.Spotify.Logout(); Later(() => ShowPage("spotify")); }, true)));
@@ -1104,11 +1105,11 @@ namespace DynamicIsland
             c.Children.Add(Divider());
             c.Children.Add(ButtonRow(
                 FilledSmall("Akku anzeigen", () => host.ShowAirPods()),
-                SmallButton("Ton auf AirPods", async () => { if (eng != null) await eng.EnsureOutputAsync(); Later(() => ShowPage("airpods")); }),
+                SmallButton("Ton auf AirPods", async () => { if (eng != null) await eng.EnsureOutputAsync(); Later(() => { if (page == "airpods") ShowPage("airpods"); }); }),
                 SmallButton("Debug-Log", () => new AirPodsDebugWindow(eng) { Owner = this }.Show())));
             root.Children.Add(Card(c));
             root.Children.Add(Footer("Startet automatisch mit der Island – ein eigenes Programm ist nicht mehr nötig. " +
-                                     "Öffnest du das Case neben dem PC, zeigt die Island den Akku von links, rechts und Case. " +
+                                     "Öffnest du das Case neben dem PC und verbinden sich die AirPods, zeigt die Island den Akku von links, rechts und Case. " +
                                      "Die AirPods müssen wie gewohnt in den Windows-Bluetooth-Einstellungen gekoppelt sein."));
 
             // Direkte Steuerung über den WPods-Dienst
@@ -1168,12 +1169,9 @@ namespace DynamicIsland
                 "„Reichweite“: „Nah“ nimmt nur AirPods direkt am PC – wichtig, wenn andere AirPods in der Nähe sind. " +
                 "„Name in Windows“: Teil des Namens, unter dem deine AirPods als Audiogerät heißen (z. B. wenn du sie umbenannt hast).\n\n" +
                 "Pausieren passiert erst, wenn ein AirPod 1,5 Sekunden lang sicher draußen ist, und nur, wenn der Ton gerade über die AirPods läuft. " +
-                "Pakete von fremden AirPods (anderer Akkustand) werden ignoriert.\n\n" +
-                "Geht in der Island nicht: Geräuschkontrolle (ANC/Transparenz), Konversationserkennung und genaue Prozente (nur 10er-Schritte). " +
-                "Das läuft über Apples privaten Bluetooth-Kanal, den Windows normalen Programmen nicht öffnet. Die App „MagicPods“ (Microsoft Store) schafft es."));
-            var mp = ButtonRow(SmallButton("MagicPods im Store", () => IslandWindow.Open("ms-windows-store://pdp/?productid=9P6SKKFKSHKM")));
-            mp.Margin = new Thickness(0, -4, 0, 0);
-            root.Children.Add(mp);
+                "Pakete von fremden AirPods (anderer Akkustand) werden ignoriert." +
+                (eng != null && eng.Aap.Connected ? "" :
+                "\n\nOhne WPods-Verbindung (siehe oben) gehen Geräuschkontrolle, Konversationserkennung und genaue Prozente nicht – dann nur 10er-Schritte.")));
         }
 
         string AirPodsText()
@@ -1429,7 +1427,7 @@ namespace DynamicIsland
                     s.Save();
                     status.Text = "Lade …";
                     await cal.RefreshAsync();
-                    Later(() => ShowPage("calendar"));
+                    Later(() => { if (page == "calendar") ShowPage("calendar"); });
                 }),
                 SmallButton("Jetzt aktualisieren", async () => { status.Text = "Lade …"; await cal.RefreshAsync(); status.Text = cal.Status; }),
                 SmallButton("Termine zeigen", () => host.ShowCalendar())));

@@ -106,6 +106,13 @@ namespace DynamicIsland
             }
         }
 
+        /// <summary>Alle Claude-Kreise entfernen (z. B. wenn „Claude in der Island zeigen“ ausgeschaltet wird).</summary>
+        public void Clear()
+        {
+            foreach (var a in sessions.Values) a.Finished = true;
+            sessions.Clear();
+        }
+
         ClaudeActivity Ensure(string sid, string cwd, ClaudeActivity act)
         {
             if (act != null) { act.SetProject(cwd); return act; }
@@ -413,11 +420,11 @@ namespace DynamicIsland
             if (bubbleTime != null)
             {
                 bubbleTime.Text = State == ClaudeState.Waiting ? "!" : State == ClaudeState.Done ? "✓" : ShortDur(total);
-                bubbleTime.Foreground = State == ClaudeState.Working ? Ui.White : Ui.Br(c);
+                Ui.SetFg(bubbleTime, State == ClaudeState.Working ? Ui.WhiteC : c);
                 bubbleTime.FontSize = State == ClaudeState.Working ? 10 : 14;
             }
-            if (wideAction != null) wideAction.Text = LeftText ?? "";
-            if (wideTime != null) { wideTime.Text = RightText ?? ""; wideTime.Foreground = Ui.Br(c); }
+            if (wideAction != null) { wideAction.Text = LeftText ?? ""; Ui.SetFg(wideAction, State == ClaudeState.Working ? Ui.WhiteC : c); }
+            if (wideTime != null) { wideTime.Text = RightText ?? ""; Ui.SetFg(wideTime, c); }
         }
 
         public void SetProject(string cwd)
@@ -487,7 +494,8 @@ namespace DynamicIsland
         //  Läuft Claude überhaupt noch?  Abbrechen mit Esc, ein geschlossenes Fenster oder ein Absturz
         //  schicken kein „Stop“ – ohne diese Prüfung bliebe der orange Kreis mit Zähler stehen.
         // ---------------------------------------------------------------
-        DateTime nextCheck = DateTime.MinValue, transcriptWrite = DateTime.MinValue;
+        DateTime nextCheck = DateTime.Now.AddSeconds(2), transcriptWrite = DateTime.MinValue;   // nicht schon im Konstruktor prüfen
+        bool sawClaudeProcess;
         long transcriptLen = -1;
         static DateTime nextProcCheck = DateTime.MinValue;
         static bool claudeRunning = true;
@@ -497,13 +505,21 @@ namespace DynamicIsland
             if (now < nextCheck) return false;
             nextCheck = now.AddSeconds(2);
 
-            // 1. Kein Claude-Prozess mehr (Fenster zu, Absturz) → sofort weg
+            // 1. Kein Claude-Prozess mehr (Fenster zu, Absturz) → sofort weg. Nur wenn während dieser Aufgabe schon einmal
+            //    ein „claude“-Prozess lief – per npm installiert läuft Claude Code als node.exe, dann zählen nur Verlauf und Stille.
             if (now >= nextProcCheck)
             {
                 nextProcCheck = now.AddSeconds(5);
-                try { claudeRunning = System.Diagnostics.Process.GetProcessesByName("claude").Length > 0; } catch { claudeRunning = true; }
+                try
+                {
+                    var procs = System.Diagnostics.Process.GetProcessesByName("claude");
+                    claudeRunning = procs.Length > 0;
+                    foreach (var p in procs) p.Dispose();
+                }
+                catch { claudeRunning = true; }
             }
-            if (!claudeRunning) return true;
+            if (claudeRunning) sawClaudeProcess = true;
+            else if (sawClaudeProcess) return true;
 
             // 2. Im Verlauf steht „abgebrochen“ (Esc) → weg
             DateTime lastWrite = DateTime.MinValue;
@@ -538,14 +554,17 @@ namespace DynamicIsland
             var buf = new byte[n];
             int read = fs.Read(buf, 0, (int)n);
             var text = System.Text.Encoding.UTF8.GetString(buf, 0, read);
-            // nur die letzten paar Zeilen: die letzte vom Nutzer muss der Abbruch-Vermerk sein
+            // Die NEUESTE echte Nutzer-Zeile entscheidet (Werkzeug-Ergebnisse übersprungen): ist sie der Abbruch-Vermerk → abgebrochen.
+            // Ein älterer Vermerk vor einer neuen Nachricht zählt nicht mehr.
             var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            for (int i = lines.Length - 1; i >= 0 && i >= lines.Length - 4; i--)
+            for (int i = lines.Length - 1; i >= 0 && i >= lines.Length - 8; i--)
             {
                 var l = lines[i];
-                // genau der Vermerk als eigener Text (unmaskiert) – nicht, wenn er nur zitiert in einer Werkzeug-Ausgabe steht
-                if (l.Contains("\"type\":\"user\"") && l.Contains("\"text\":\"[Request interrupted by user")) return true;
                 if (l.Contains("\"type\":\"assistant\"")) return false;
+                if (!l.Contains("\"type\":\"user\"")) continue;
+                if (l.Contains("\"tool_result\"") || l.Contains("\"tool_use_id\"")) continue;
+                // genau der Vermerk als eigener Text (unmaskiert) – nicht, wenn er nur zitiert in einer Werkzeug-Ausgabe steht
+                return l.Contains("\"text\":\"[Request interrupted by user");
             }
             return false;
         }
@@ -583,6 +602,10 @@ namespace DynamicIsland
                     break;
             }
 
+            // fertig / wartet in der eingestellten Farbe statt weiß (Pille, große Ansicht, breiter Kreis)
+            Color? stateCol = State == ClaudeState.Done ? DoneColor() : State == ClaudeState.Waiting ? Ui.Yellow : (Color?)null;
+            LeftColor = stateCol;
+            TitleColor = stateCol;
             LeftText = State == ClaudeState.Done ? "Claude ist fertig" : action;
             RightText = Dur(total);
             Title = "Claude" + (project != "" ? " · " + project : "");

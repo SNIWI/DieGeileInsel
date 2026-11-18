@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
@@ -6,7 +6,7 @@ using System.Windows.Media.Effects;
 namespace DynamicIsland
 {
     /// <summary>
-    /// Designs für Hinweise (Einstellungen → Animationen → Hinweise → Design):
+    /// Designs für Hinweise (Einstellungen → Hinweise → Aussehen → Design):
     ///   small   – Klein: flache Pille, kleines Symbol im getönten Kreis, eine Zeile
     ///   normal  – Groß: großes Symbol im Kreis mit Leuchten, zwei Zeilen
     ///   ios     – Mitteilung: App-Symbol im abgerundeten Quadrat, Titel + „jetzt“, darunter der Text
@@ -46,7 +46,7 @@ namespace DynamicIsland
                     break;
                 case "glow":
                     b.CornerRadius = new CornerRadius(size / 2);
-                    b.Background = Ui.Br(c, 95);
+                    b.Background = Ui.Br(c, 50);   // schwach – das Symbol hat dieselbe Farbe; der kräftige Ring trägt das Leuchten
                     b.BorderBrush = Ui.Br(c, 210);
                     b.BorderThickness = new Thickness(1.2);
                     break;
@@ -65,7 +65,7 @@ namespace DynamicIsland
             {
                 case "minimal": return null;
                 case "ios": a = 55; blur = 10; break;
-                case "glow": a = 190; blur = 18; break;
+                case "glow": a = 110; blur = 18; break;
                 case "normal": a = 120; blur = 14; break;
                 default: a = 70; blur = 8; break;
             }
@@ -85,15 +85,17 @@ namespace DynamicIsland
             if (D != "glow") return null;
             return new LinearGradientBrush(new GradientStopCollection
             {
-                new GradientStop(A(c, 95), 0),
-                new GradientStop(A(c, 30), 0.45),
+                new GradientStop(A(c, 70), 0),
+                new GradientStop(A(c, 28), 0.45),
                 new GradientStop(Colors.Transparent, 0.85)
             }, new Point(0, 0.5), new Point(1, 0.5));
         }
 
         /// <summary>Titelfarbe: „Leuchtend“ färbt den Titel in der Ereignisfarbe.</summary>
-        public static Brush TitleBrush(Color c, Color? custom) =>
-            custom.HasValue ? Ui.Br(custom.Value) : D == "glow" ? Ui.Br(CatStyle.Mix(c, Colors.White, 0.25)) : Ui.White;
+        public static Brush TitleBrush(Color c, Color? custom) => Ui.Br(TitleColorOf(c, custom));
+
+        public static Color TitleColorOf(Color c, Color? custom) =>
+            custom.HasValue ? custom.Value : D == "glow" ? CatStyle.Mix(c, Colors.White, 0.25) : Ui.WhiteC;
 
         /// <summary>Höhe einer Kurz-Meldung (Spotlight).</summary>
         public static double SpotHeight => D switch { "small" => 36, "minimal" => 34, "ios" => 58, _ => 52 };

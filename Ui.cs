@@ -56,8 +56,19 @@ namespace DynamicIsland
 
         /// <summary>Windows-Einstellung „Animationen anzeigen“ aus = Bewegung reduzieren (Apple: Reduce Motion).</summary>
         public static bool ReduceMotion => !SystemParameters.ClientAreaAnimation;
-        /// <summary>Hinweise klein und schlicht (Einstellungen → Animationen → Größe der Hinweise).</summary>
+        /// <summary>Hinweise einzeilig (Design „Klein“ oder „Minimal“, Einstellungen → Hinweise → Aussehen).</summary>
         public static bool CompactAlerts = true;
+
+        /// <summary>Zeilenumbrüche/Tabs zu einem Leerzeichen – für einzeilige Hinweise (Mitteilungen bringen oft mehrere Zeilen mit).</summary>
+        public static string OneLine(string s) =>
+            string.IsNullOrEmpty(s) ? s : System.Text.RegularExpressions.Regex.Replace(s, @"\s*[\r\n\t\u2028\u2029]+\s*", " ").Trim();
+
+        /// <summary>Textfarbe nur setzen, wenn sie sich wirklich ändert (Refresh läuft ~20× pro Sekunde).</summary>
+        public static void SetFg(TextBlock t, Color c)
+        {
+            if (t == null) return;
+            if (!(t.Foreground is SolidColorBrush b && b.Color == c)) t.Foreground = Br(c);
+        }
         /// <summary>Design der Hinweise: small, normal, ios, minimal, glow.</summary>
         public static string AlertDesign = "small";
         /// <summary>Erscheinen von Hinweisen: slide · morph · none.</summary>

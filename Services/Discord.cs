@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
@@ -101,10 +101,14 @@ namespace DynamicIsland
             while (running && gen == generation)
             {
                 bool retry = true;
-                try { retry = await RunOnceAsync(); }
+                try { retry = await RunOnceAsync(gen); }
                 catch (Exception ex)
                 {
-                    Program.Log(ex);
+                    // Discord schließt die Verbindung (Neustart, Update, beendet) – normal, kein Fehler fürs Protokoll
+                    bool normal = gen != generation || ex is EndOfStreamException || ex is ObjectDisposedException
+                                  || ex is OperationCanceledException || ex is DiscordClosedException
+                                  || (ex is IOException && pipe == null);
+                    if (!normal) Program.Log(ex);
                     if (running && gen == generation) SetStatus("Verbindung zu Discord getrennt – neuer Versuch …");
                 }
                 if (gen != generation) break;
@@ -128,6 +132,12 @@ namespace DynamicIsland
             Start();
         }
 
+        /// <summary>Discord hat die Verbindung bewusst beendet (CLOSE-Rahmen) – z. B. „Invalid Client ID“.</summary>
+        sealed class DiscordClosedException : IOException
+        {
+            public DiscordClosedException(string msg) : base(msg) { }
+        }
+
         void Cleanup()
         {
             Connected = false;
@@ -145,7 +155,7 @@ namespace DynamicIsland
         }
 
         /// <returns>true = später erneut versuchen, false = aufgeben (z. B. falsche Client-ID).</returns>
-        async Task<bool> RunOnceAsync()
+        async Task<bool> RunOnceAsync(int gen)
         {
             NamedPipeClientStream p = null;
             for (int i = 0; i < 10 && p == null; i++)
@@ -164,26 +174,38 @@ namespace DynamicIsland
                 return true;
             }
 
+            if (gen != generation) { try { p.Dispose(); } catch { } return true; }   // inzwischen neu gestartet
             pipe = p;
-            ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var myReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ready = myReady;
             var reader = ReadLoopAsync(p);
             readerTask = reader;
+            // Fehler des Lesers immer „beobachten“ – sonst meldet der Garbage Collector später „Task exception not observed“
+            _ = reader.ContinueWith(t => _ = t.Exception, System.Threading.CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
             await WriteFrameAsync(0, new JsonObject { ["v"] = 1, ["client_id"] = settings.DiscordClientId.Trim() }.ToJsonString());
-            var first = await Task.WhenAny(ready.Task, reader, Task.Delay(8000));
+            var first = await Task.WhenAny(myReady.Task, reader, Task.Delay(8000));
+            if (gen != generation || pipe != p) return true;   // Stop/Neustart während des Wartens
             if (first == reader)
             {
-                var msg = reader.Exception?.GetBaseException().Message ?? "Verbindung abgelehnt";
-                SetStatus("Discord hat abgelehnt: " + msg + " (Client-ID prüfen)");
-                return false;
+                // nur ein echter CLOSE-Rahmen heißt „abgelehnt“; ein geschlossener Kanal (Discord startet neu) → später erneut versuchen
+                if (reader.Exception?.GetBaseException() is DiscordClosedException dc)
+                {
+                    SetStatus("Discord hat abgelehnt: " + dc.Message + " (Client-ID prüfen)");
+                    return false;
+                }
+                SetStatus("Verbindung zu Discord getrennt – neuer Versuch …");
+                return true;
             }
-            if (first != ready.Task)
+            if (first != myReady.Task || myReady.Task.Status != TaskStatus.RanToCompletion)
             {
                 SetStatus("Discord antwortet nicht");
                 return true;
             }
 
             if (!await AuthAsync()) return false;
+            if (gen != generation || pipe != p) return true;
             Connected = true;
             SetStatus("Verbunden als " + (SelfName ?? "Discord-Nutzer"));
 
@@ -565,7 +587,7 @@ namespace DynamicIsland
                 switch (op)
                 {
                     case 1: Handle(body); break;
-                    case 2: throw new IOException(CloseReason(body));
+                    case 2: throw new DiscordClosedException(CloseReason(body));
                     case 3: await WriteFrameAsync(4, body); break; // Ping → Pong
                 }
             }

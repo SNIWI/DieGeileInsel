@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -27,8 +27,8 @@ namespace DynamicIsland
         {
             this.icon = icon;
             this.color = color;
-            this.title = title ?? "";
-            this.sub = sub ?? "";
+            this.title = Ui.OneLine(title) ?? "";
+            this.sub = Ui.OneLine(sub) ?? "";
             this.tap = tap;
             Id = "spotlight";
             IsAlert = true;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -169,6 +169,7 @@ namespace DynamicIsland
             // Kanal offen → Pakete lesen (eigener Task) und Handshake schicken
             firstPacket = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var reader = ReadLoopAsync(ct);
+            _ = reader.ContinueWith(t => _ = t.Exception, System.Threading.CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);   // Fehler immer beobachten
             await WriteAsync(Handshake, ct);
             var first = await Task.WhenAny(firstPacket.Task, Task.Delay(10000, ct));
             if (first != firstPacket.Task) { SetState(LinkState.Failed, "AirPods antworten nicht"); return; }
