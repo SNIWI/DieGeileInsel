@@ -434,6 +434,8 @@ namespace DynamicIsland
         static readonly double[] Scales = { 0.9, 1, 1.15, 1.3 };
         static readonly double[] PageScales = { 0.7, 0.8, 0.9, 1 };
         static readonly double[] PageWides = { 1.0, 1.15, 1.3, 1.45 };
+        static readonly double[] PageFonts = { 1.0, 1.2, 1.4, 1.6 };
+        static readonly string[] PageFontNames = { "Normal", "Groß", "Größer", "Sehr groß" };
 
         static int Nearest(double[] values, double v)
         {
@@ -464,6 +466,18 @@ namespace DynamicIsland
             root.Children.Add(Card(size));
             root.Children.Add(Footer("Frei verschieben: rechte Maustaste auf der Island gedrückt halten und ziehen – auch auf einen anderen Bildschirm. Rastet nur in der Mitte ein. " +
                                      "„Genau in der Mitte“: Die Island rutscht nicht zur Seite, wenn rechts daneben der kleine Kreis erscheint. Aus: Island und Kreis werden zusammen zentriert."));
+
+            // ---------- Seiten: Schrift + Stil ----------
+            root.Children.Add(Header("Seiten"));
+            var pages = new StackPanel();
+            pages.Children.Add(SegmentRow("Schrift in den Seiten", PageFontNames, Nearest(PageFonts, s.PageFont),
+                i => { s.PageFont = PageFonts[i]; Apply(); host.RefreshPage(); }));
+            pages.Children.Add(Divider());
+            pages.Children.Add(SegmentRow("Stil der Seiten", new[] { "Aufgeräumt", "Ausführlich" }, s.PageStyle == "full" ? 1 : 0,
+                i => { s.PageStyle = i == 1 ? "full" : "clean"; Apply(); host.RefreshPage(); }));
+            root.Children.Add(Card(pages));
+            root.Children.Add(Footer("Die Schrift wächst, die Island bleibt gleich groß. „Aufgeräumt“ zeigt weniger Einzelheiten, dafür größer (z. B. Wetter ohne Tage, Kalender mit 3 Terminen). " +
+                                     "Jede Seite kann unter „Seiten & Widgets“ eigene Werte bekommen (Knopf Aa)."));
 
             // ---------- Aussehen ----------
             root.Children.Add(Header("Aussehen"));
@@ -547,7 +561,7 @@ namespace DynamicIsland
             clock.Children.Add(ToggleRow("Sekunden anzeigen", s.ClockSeconds, v => { s.ClockSeconds = v; Apply(); }, out _));
             clock.Children.Add(Divider());
             var dateKeys = new[] { "short", "long", "week", "numeric", "off" };
-            clock.Children.Add(ChipRow("Datum", new[] { "So., 15. Nov.", "Sonntag, 15. November", "Mit Kalenderwoche", "15.11.2026", "Kein Datum" },
+            clock.Children.Add(ChipRow("Datum", new[] { "Sonntag, 15. Nov.", "Sonntag, 15. November", "Mit Kalenderwoche", "15.11.2026", "Kein Datum" },
                 Math.Max(0, Array.IndexOf(dateKeys, s.ClockDate ?? "short")), i => { s.ClockDate = dateKeys[i]; Apply(); Later(() => ShowPage("overview")); }));
             clock.Children.Add(Divider());
             var styles = new[] { "bold", "regular", "light" };
@@ -947,12 +961,31 @@ namespace DynamicIsland
         // =================================================================
         //  Wetter
         // =================================================================
+        /// <summary>Seite der Island an- oder abschalten (neue Seiten kommen direkt hinter die Übersicht).</summary>
+        void SetIslandPage(string key, bool on)
+        {
+            s.Pages ??= new List<string> { "dashboard" };
+            if (on && !s.Pages.Contains(key))
+            {
+                int i = s.Pages.IndexOf("dashboard");
+                s.Pages.Insert(i >= 0 ? i + 1 : 0, key);
+            }
+            else if (!on) s.Pages.Remove(key);
+            s.Save();
+            host.ApplySettings();
+        }
+
         void BuildWeather(StackPanel root)
         {
+            root.Children.Add(Header("In der Island"));
+            var vis = new StackPanel();
+            vis.Children.Add(ToggleRow("Eigene Seite „Wetter“", s.Pages?.Contains("weather") == true, v => SetIslandPage("weather", v), out _));
+            vis.Children.Add(Divider());
+            vis.Children.Add(ToggleRow("In der kleinen Ansicht neben der Uhr", s.WeatherEnabled, v => { s.WeatherEnabled = v; Apply(); }, out _));
+            root.Children.Add(Card(vis));
+
             root.Children.Add(Header("Ort"));
             var g = new StackPanel();
-            g.Children.Add(ToggleRow("Wetter anzeigen", s.WeatherEnabled, v => { s.WeatherEnabled = v; Apply(); }, out _));
-            g.Children.Add(Divider());
             var city = Field(s.WeatherCity ?? "", 14, false);
             city.MaxLength = 60;
             g.Children.Add(PlainField("Stadt", city));
@@ -1167,7 +1200,7 @@ namespace DynamicIsland
         {
             ("player", "Player", "\uE8D6"), ("sound", "Ton", "\uE767"), ("brightness", "Helligkeit", "\uE706"),
             ("clipboard", "Zwischenablage", "\uE77F"), ("apps", "Apps", "\uE7C4"), ("shortcuts", "Kurzbefehle", "\uE8A9"),
-            ("downloads", "Downloads", "\uE896"), ("bluetooth", "Bluetooth / AirPods", "\uE702"), ("ai", "Gemini", "\uE8BD"), ("calendar", "Heute (Wetter + Kalender)", "\uE787"), ("todo", "To Do", "\uE73A"),
+            ("downloads", "Downloads", "\uE896"), ("bluetooth", "Bluetooth / AirPods", "\uE702"), ("ai", "Gemini", "\uE8BD"), ("weather", "Wetter", WeatherActivity.Glyph), ("calendar", "Kalender", "\uE787"), ("todo", "To Do", "\uE73A"),
         };
 
         (string name, string glyph) PageInfo(string key)
@@ -1289,9 +1322,11 @@ namespace DynamicIsland
             {
                 var fixedT = Ui.Text("immer vorne", 12.5, Secondary, false);
                 fixedT.VerticalAlignment = VerticalAlignment.Center;
-                Grid.SetColumn(fixedT, 2);
-                g.Children.Add(fixedT);
-                return g;
+                var fx = Ui.HStack(8, fixedT, LookButton(key));
+                fx.VerticalAlignment = VerticalAlignment.Center;
+                Grid.SetColumn(fx, 2);
+                g.Children.Add(fx);
+                return WithLook(key, g);
             }
             var up = Ui.RoundButton("\uE70E", 12, () => Move(index, -1), 30, Brushes.Transparent, index > 1 ? Ui.White : Secondary);
             up.ToolTip = "Nach vorne";
@@ -1304,11 +1339,51 @@ namespace DynamicIsland
                 PagesChanged();
             }, 30, Ui.Br(Ui.Red, 45), RedBrush);
             del.ToolTip = "Seite entfernen";
-            var btns = Ui.HStack(4, up, down, del);
+            var btns = Ui.HStack(4, LookButton(key), up, down, del);
             btns.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(btns, 2);
             g.Children.Add(btns);
-            return g;
+            return WithLook(key, g);
+        }
+
+        // ---- eigene Schrift / eigener Stil pro Seite ----
+        readonly HashSet<string> openLooks = new HashSet<string>();
+
+        FrameworkElement LookButton(string key)
+        {
+            bool own = s.PageLooks != null && s.PageLooks.ContainsKey(key);
+            var b = Ui.RoundButton("", 12.5, () => { if (!openLooks.Remove(key)) openLooks.Add(key); Later(() => ShowPage("pages")); }, 30,
+                                   openLooks.Contains(key) ? Ui.Br(Colors.White, 30) : Brushes.Transparent, own ? BlueBrush : Ui.White);
+            b.ToolTip = own ? "Eigene Schrift / eigener Stil (geändert)" : "Schrift und Stil dieser Seite";
+            return b;
+        }
+
+        FrameworkElement WithLook(string key, FrameworkElement row)
+        {
+            if (!openLooks.Contains(key)) return row;
+            s.PageLooks ??= new Dictionary<string, PageLook>();
+            s.PageLooks.TryGetValue(key, out var l);
+            var sp = new StackPanel();
+            sp.Children.Add(row);
+            var box = new StackPanel { Margin = new Thickness(24, 0, 0, 8) };
+            int fi = l == null || l.Font <= 0 ? 0 : Nearest(PageFonts, l.Font) + 1;
+            box.Children.Add(ChipRow("Schrift", new[] { "Wie alle" }.Concat(PageFontNames).ToArray(), fi, i => SetLook(key, i == 0 ? 0 : PageFonts[i - 1], null)));
+            int si = l == null || string.IsNullOrEmpty(l.Style) ? 0 : l.Style == "full" ? 2 : 1;
+            box.Children.Add(ChipRow("Stil", new[] { "Wie alle", "Aufgeräumt", "Ausführlich" }, si, i => SetLook(key, null, i == 0 ? "" : i == 1 ? "clean" : "full")));
+            sp.Children.Add(box);
+            return sp;
+        }
+
+        void SetLook(string key, double? font, string style)
+        {
+            s.PageLooks ??= new Dictionary<string, PageLook>();
+            if (!s.PageLooks.TryGetValue(key, out var l)) s.PageLooks[key] = l = new PageLook();
+            if (font != null) l.Font = font.Value;
+            if (style != null) l.Style = style == "" ? null : style;
+            if (l.Font <= 0 && string.IsNullOrEmpty(l.Style)) s.PageLooks.Remove(key);
+            Apply();
+            host.RefreshPage();
+            Later(() => ShowPage("pages"));
         }
 
         void Move(int index, int dir)
@@ -1748,6 +1823,10 @@ namespace DynamicIsland
             root.Children.Add(Header("Erinnerungen"));
             var r = new StackPanel();
             r.Children.Add(ToggleRow("Termine in der Island anzeigen", s.CalendarEnabled, v => { s.CalendarEnabled = v; Apply(); }, out _));
+            r.Children.Add(Divider());
+            r.Children.Add(ToggleRow("Eigene Seite „Kalender“", s.Pages?.Contains("calendar") == true, v => SetIslandPage("calendar", v), out _));
+            r.Children.Add(Divider());
+            r.Children.Add(ToggleRow("Wetter links auf der Kalender-Seite", s.CalendarWithWeather, v => { s.CalendarWithWeather = v; Apply(); }, out _));
             r.Children.Add(Divider());
             int ri = Array.IndexOf(RemindOptions, s.CalendarRemind);
             r.Children.Add(ChipRow("Vorher erinnern", new[] { "Aus", "5 Min", "10 Min", "15 Min", "30 Min" }, ri < 0 ? 2 : ri,

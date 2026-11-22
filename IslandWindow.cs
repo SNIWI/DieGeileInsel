@@ -795,8 +795,9 @@ namespace DynamicIsland
             FrameworkElement el = null;
             if (a != null)
             {
-                try { el = expanded ? a.BuildExpanded() : a.BuildCompact(); }
+                try { if (expanded) Ui.TextBoost = PageFontFor(a); el = expanded ? a.BuildExpanded() : a.BuildCompact(); }
                 catch (Exception ex) { Program.Log(ex); }
+                finally { Ui.TextBoost = 1; }
             }
 
             var old = currentContent;
@@ -1403,7 +1404,7 @@ namespace DynamicIsland
         /// <summary>Panels (Kurzbefehle, Downloads, Ton, Hilfe) verschwinden, sobald man sie verlässt.</summary>
         static bool IsPanel(Activity a) => a is ShortcutsActivity || a is DownloadsActivity || a is SoundActivity
                                             || a is ClipboardActivity || a is AppSwitcherActivity || a is BrightnessActivity
-                                            || a is SpotifyListActivity || a is AirPodsActivity || a is BluetoothActivity || a is HeadphonesActivity || a is AiActivity || a is CalendarActivity || a is TodoActivity || a is WidgetPageActivity || a is TimerPickerActivity || a?.Id == "help";
+                                            || a is SpotifyListActivity || a is AirPodsActivity || a is BluetoothActivity || a is HeadphonesActivity || a is AiActivity || a is CalendarActivity || a is WeatherActivity || a is TodoActivity || a is WidgetPageActivity || a is TimerPickerActivity || a?.Id == "help";
 
         void Expand(Activity a)
         {
@@ -2308,7 +2309,7 @@ namespace DynamicIsland
             foreach (var k in Settings.Pages ?? new List<string> { "dashboard" })
             {
                 if (string.IsNullOrEmpty(k) || keys.Contains(k)) continue;
-                if (k == "player") { if (PlayerAct() != null || Spotify.Connected) keys.Add(k); }
+                if (k == "player") { if (!Demo && (PlayerAct() != null || Spotify.Connected)) keys.Add(k); }
                 else if (k == "airpods" || k == "bluetooth") { if (!keys.Contains("bluetooth")) keys.Add("bluetooth"); }
                 else if (k.StartsWith("w:")) { if (Settings.WidgetPages.Any(p => "w:" + p.Id == k)) keys.Add(k); }
                 else if (k == "ai") { if (Settings.AiEnabled) keys.Add(k); }
@@ -2423,9 +2424,13 @@ namespace DynamicIsland
 
         public void ShowWeather()
         {
-            // Wetter wohnt jetzt mit dem Kalender auf der Seite „Heute“
+            // eigene Seite „Wetter“ (der Kalender ist getrennt)
             _ = Weather.RefreshAsync();
-            ShowCalendar();
+            var a = activities.OfType<WeatherActivity>().FirstOrDefault() ?? new WeatherActivity(this) { Host = this };
+            a.ExpiresAt = DateTime.Now.AddSeconds(60);
+            if (activities.Contains(a)) Rebuild(a);
+            else Add(a);
+            Expand(a);
         }
 
         // ---- Microsoft To Do ----
@@ -2768,9 +2773,32 @@ namespace DynamicIsland
             OpenMenu(cm);
         }
 
-        string CurrentPageKey()
+        /// <summary>Demo-Modus (API /demo): keine Medien-Titel/-Cover, z. B. für Bildschirmaufnahmen.</summary>
+        public static bool Demo;
+
+        string CurrentPageKey() => PageKeyOf(expandedAct);
+
+        /// <summary>Offene Seite neu aufbauen (z. B. nach Änderung von Schrift oder Stil).</summary>
+        public void RefreshPage() { pageCache.Clear(); if (expandedAct != null) Rebuild(expandedAct); }
+
+        /// <summary>Schrift-Faktor einer Seite: eigene Einstellung der Seite, sonst die allgemeine (Einstellungen → Seiten).</summary>
+        public double PageFontFor(Activity a)
         {
-            var a = expandedAct;
+            var key = PageKeyOf(a);
+            double f = key != null && Settings.PageLooks != null && Settings.PageLooks.TryGetValue(key, out var l) && l.Font > 0 ? l.Font : Settings.PageFont;
+            return Math.Max(0.8, Math.Min(1.8, f <= 0 ? 1 : f));
+        }
+
+        /// <summary>Seite aufgeräumt zeigen (weniger Einzelheiten, dafür größer)?</summary>
+        public bool CleanPage(Activity a)
+        {
+            var key = PageKeyOf(a);
+            string st = key != null && Settings.PageLooks != null && Settings.PageLooks.TryGetValue(key, out var l) && !string.IsNullOrEmpty(l.Style) ? l.Style : Settings.PageStyle;
+            return st != "full";
+        }
+
+        string PageKeyOf(Activity a)
+        {
             if (a == null) return null;
             if (a == dashboard) return "dashboard";
             if (a is MediaActivity || a is SpotifyActivity || a is SpotifyListActivity) return "player";
@@ -2847,7 +2875,7 @@ namespace DynamicIsland
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 4, 0, 0)
+                Margin = new Thickness(0, 2, 0, 0)
             };
             for (int i = 0; i < keys.Count; i++)
             {
@@ -2863,18 +2891,18 @@ namespace DynamicIsland
                 Color? mono = colored ? (Color?)null : Colors.White;
                 Color tint = colored ? PageColor(key, liveAct) : Colors.White;
                 var brush = Ui.Br(tint, (byte)(op * 255));
-                if (liveAct is ClaudeActivity) icon = Logos.Claude(12, op, mono);
-                else if (liveAct is DiscordVoiceActivity) icon = Logos.Discord(13, op, mono);
-                else if (g != null) icon = Ui.Glyph(g, 10, brush);
-                else icon = new System.Windows.Shapes.Ellipse { Width = 5, Height = 5, Fill = brush };
+                if (liveAct is ClaudeActivity) icon = Logos.Claude(15, op, mono);
+                else if (liveAct is DiscordVoiceActivity) icon = Logos.Discord(16, op, mono);
+                else if (g != null) icon = Ui.Glyph(g, 13, brush);
+                else icon = new System.Windows.Shapes.Ellipse { Width = 6.5, Height = 6.5, Fill = brush };
                 var cell = new Border
                 {
                     Child = icon,
-                    Height = 17,
-                    MinWidth = 20,
-                    Padding = new Thickness(5, 0, 5, 0),
+                    Height = 21,
+                    MinWidth = 25,
+                    Padding = new Thickness(6, 0, 6, 0),
                     Margin = new Thickness(1, 0, 1, 0),
-                    CornerRadius = new CornerRadius(8.5),
+                    CornerRadius = new CornerRadius(10.5),
                     Background = cur ? Ui.Br(Colors.White, 38) : Brushes.Transparent,
                     Cursor = cur ? null : Cursors.Hand,
                     ToolTip = PageTitle(key)
@@ -3303,7 +3331,7 @@ namespace DynamicIsland
                 case "shortcuts": return "Verknüpfungen";
                 case "apps": return "Apps";
                 case "ai": return Gemini.Name;
-                case "calendar": return "Heute";
+                case "calendar": return "Kalender";
                 case "todo": return "To Do";
                 case "weather": return "Wetter";
             }
@@ -3525,9 +3553,9 @@ namespace DynamicIsland
                     g.Buttons.Add(new ActionButton("\uE717", Ui.Br(Ui.Green), () => AnswerCall(g, app, aumid, true, isDiscord, isWhatsApp)));
                     g.Buttons.Add(new ActionButton("\uE778", Ui.Br(Ui.Red), () => AnswerCall(g, app, aumid, false, isDiscord, isWhatsApp)));
                 }
-                else if (!call && !string.IsNullOrWhiteSpace(title))
+                else if (!call && !string.IsNullOrWhiteSpace(title) && CanReply(app, aumid))
                 {
-                    // Antworten direkt aus der Island
+                    // Antworten direkt aus der Island (nur Chat-Apps – bei Updates, Mails, Systemmeldungen gibt es nichts zu antworten)
                     string sender = title, msg = body, icon = iconUrl, ch = channelId, id = aumid;
                     g.Buttons.Add(new ActionButton("\uE97A", Ui.Br(accent), () =>
                     {
@@ -3539,6 +3567,14 @@ namespace DynamicIsland
                 g.TapAction = () => { OpenSourceApp(app, aumid, isDiscord, isWhatsApp); g.Finished = true; Relayout(); return true; };
             });
             Rebuild(a);
+        }
+
+        /// <summary>Chat-Apps, in denen man auf eine Nachricht antworten kann.</summary>
+        static readonly string[] ChatApps = { "whatsapp", "discord", "teams", "telegram", "signal", "messenger", "slack", "instagram", "skype", "threema", "element", "smartphone-link", "phone link", "yourphone", "phoneexperience", "vorschau" };
+        static bool CanReply(string app, string aumid)
+        {
+            string s = ((app ?? "") + " " + (aumid ?? "")).ToLowerInvariant();
+            return ChatApps.Any(c => s.Contains(c));
         }
 
         async void AnswerCall(GenericActivity g, string app, string aumid, bool accept, bool isDiscord, bool isWhatsApp)
@@ -4434,10 +4470,17 @@ namespace DynamicIsland
             if (tickCount % 100 == 0 && Settings.MirrorNotifications && Notifications.WantsRetry) _ = Notifications.InitAsync();   // nach Fehler neu verbinden
             foreach (var a in activities.ToArray())
             {
+                // die offene Seite baut Teile ggf. neu auf – mit ihrer Schriftgröße
+                if (a == expandedAct && currentAct == a) Ui.TextBoost = PageFontFor(a);
                 try { a.Update(); } catch (Exception ex) { Program.Log(ex); }
+                finally { Ui.TextBoost = 1; }
             }
             if (currentAct == clock) clock.Update();
-            if (currentAct == dashboard) dashboard.Update();
+            if (currentAct == dashboard)
+            {
+                if (expandedAct == dashboard) Ui.TextBoost = PageFontFor(dashboard);
+                try { dashboard.Update(); } finally { Ui.TextBoost = 1; }
+            }
 
             if (tickCount % 2 == 0) PollAudio();
             if (tickCount % 5 == 0) { Media.Poll(); SyncMedia(); PollCapsLock(); Relayout(); }
@@ -5174,6 +5217,21 @@ namespace DynamicIsland
         {
             if (path.StartsWith("/claude-limits")) { Claude.HandleLimits(body); return; }   // Statuszeile: Nutzungs-Limits
             if (path.StartsWith("/logitech")) { ShowLogitech(); return; }                       // Akku von Maus & Tastatur zeigen
+            if (path.StartsWith("/demo"))                                                       // Demo-Modus für Aufnahmen: Medien (Titel, Cover) ausblenden
+            {
+                Demo = q["on"] != "0";
+                foreach (var mid in new[] { mediaAct?.Id, spotifyAct?.Id }) if (mid != null) { if (Demo) hidden.Add(mid); else hidden.Remove(mid); }
+                pageCache.Clear();
+                Relayout();
+                return;
+            }
+            if (path.StartsWith("/page"))                                                       // Seite öffnen (?key=weather|calendar|…|close) oder wischen (?dir=1|-1)
+            {
+                if (q["dir"] != null && int.TryParse(q["dir"], out int dir)) SwipePage(Math.Sign(dir));
+                else if (q["key"] == "close") Collapse();
+                else OpenPage(q["key"] ?? "dashboard");
+                return;
+            }
             if (path.StartsWith("/settings")) { OpenSetup(q["page"]); if (q["q"] != null) setupWin?.Search(q["q"]); return; }   // Einstellungen öffnen (?page=…&q=Suche)
             if (path.StartsWith("/claude")) { Claude.Handle(body, q); return; }
             string id = "api-" + (q["id"] ?? "1");

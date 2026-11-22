@@ -71,6 +71,7 @@ namespace DynamicIsland
         public override FrameworkElement BuildExpanded()
         {
             if (!loaded) Reload();
+            bool clean = host.CleanPage(this);
             bool on = radio == null || radio.State == RadioState.On;
             var blue = Ui.Br(Color.FromRgb(0x0A, 0x84, 0xFF));
             var root = new StackPanel { Margin = new Thickness(22, 14, 22, 10) };
@@ -120,6 +121,7 @@ namespace DynamicIsland
             // Geräte als Kacheln (2 Spalten): verbunden = blauer Kreis, sonst grau
             var label = Ui.Text("GERÄTE", 10.5, Ui.Dim, true);
             label.Margin = new Thickness(2, 14, 0, 6);
+            if (clean) { label.Visibility = Visibility.Collapsed; root.Children.Add(new Border { Height = 12 }); }
             root.Children.Add(label);
             var grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
             if (!loaded) root.Children.Add(Ui.Text("Suche Geräte …", 12.5, Ui.Dim, false));
@@ -147,9 +149,9 @@ namespace DynamicIsland
                     Child = Ui.Glyph(d.glyph, 13, Ui.White),
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                var name = Ui.Text(d.name, 13, Ui.White, d.connected);
+                var name = Ui.Text(d.name, clean ? 14 : 13, Ui.White, d.connected);
                 name.TextTrimming = TextTrimming.CharacterEllipsis;
-                var state = Ui.Text(d.state, 11, d.low ? Ui.Br(Ui.Red) : d.connected ? Ui.Br(Color.FromRgb(0x64, 0xB5, 0xFF)) : Ui.Dim, false);
+                var state = Ui.Text(d.state, clean ? 12 : 11, d.low ? Ui.Br(Ui.Red) : d.connected ? Ui.Br(Color.FromRgb(0x64, 0xB5, 0xFF)) : Ui.Dim, false);
                 var nt = Ui.VStack(0, name, state);
                 nt.Margin = new Thickness(9, 0, 4, 0);
                 nt.VerticalAlignment = VerticalAlignment.Center;
@@ -160,7 +162,7 @@ namespace DynamicIsland
                 g.Children.Add(circle); g.Children.Add(nt);
                 var tile = new Border
                 {
-                    Height = 48, CornerRadius = new CornerRadius(14), Margin = new Thickness(0, 0, 6, 6),
+                    Height = (clean ? 52 : 48) * Math.Max(1, Ui.TextBoost * 0.92), CornerRadius = new CornerRadius(14), Margin = new Thickness(0, 0, 6, 6),
                     Padding = new Thickness(9, 0, 9, 0), Background = d.connected ? Ui.Br(Color.FromRgb(0x0A, 0x84, 0xFF), 38) : Ui.Card,
                     Cursor = Cursors.Hand, Child = g, ToolTip = d.name
                 };
@@ -179,7 +181,7 @@ namespace DynamicIsland
                 Ui.Link("Gerät hinzufügen …", () => IslandWindow.Open("ms-settings-connectabledevices:devicediscovery"), 12),
                 Ui.Link(devices.Count > 4 ? $"Alle {devices.Count} Geräte …" : "Aktualisieren", devices.Count > 4 ? (Action)(() => IslandWindow.Open("ms-settings:bluetooth")) : Reload, 12));
             links.Margin = new Thickness(2, 2, 0, 0);
-            root.Children.Add(links);
+            if (!clean) root.Children.Add(links);
             return root;
         }
 

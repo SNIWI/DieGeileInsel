@@ -6,7 +6,7 @@
 
 ## 1. Überblick
 
-**Die Geile Insel** bildet die „Dynamic Island“ des iPhones auf dem Windows-Desktop nach: eine schwarze Pille oben auf dem Bildschirm, die mit Federanimationen wächst und schrumpft, Live-Aktivitäten zeigt (Musik, Timer, Claude Code, Downloads …) und Hinweise (Nachrichten, „fertig“-Meldungen) einblendet. Aufgeklappt wird sie zu einer „großen Island“ mit wischbaren Seiten (Übersicht, Player, Heute, To Do, KI …).
+**Die Geile Insel** bildet die „Dynamic Island“ des iPhones auf dem Windows-Desktop nach: eine schwarze Pille oben auf dem Bildschirm, die mit Federanimationen wächst und schrumpft, Live-Aktivitäten zeigt (Musik, Timer, Claude Code, Downloads …) und Hinweise (Nachrichten, „fertig“-Meldungen) einblendet. Aufgeklappt wird sie zu einer „großen Island“ mit wischbaren Seiten (Übersicht, Player, Wetter, Kalender, To Do, KI …).
 
 ### Ziele
 - **Unaufdringlich:** Die Island ist fast nur sichtbar, wenn ein Hinweis kommt oder der Nutzer sie hervorholt.
@@ -44,7 +44,7 @@ flowchart LR
         PL[MediaActivity / SpotifyActivity]
         CL[ClaudeActivity]
         SP[SpotlightActivity]
-        PG[Seiten: Heute, To Do, KI, Ton …]
+        PG[Seiten: Wetter, Kalender, To Do, KI, Ton …]
     end
     subgraph Dienste
         MS[MediaService]
@@ -89,7 +89,7 @@ flowchart LR
 
 | Zustand | Beschreibung |
 |---|---|
-| Leerlauf | Pille mit **Uhrzeit links und Wetter rechts** (ohne Wetter: Akku/Datum) oder dünner Strich (Einstellung) |
+| Leerlauf | Pille mit **Uhrzeit links und Wetter rechts** (farbiges Wetter-Symbol, abschaltbar) (ohne Wetter: Akku/Datum) oder dünner Strich (Einstellung) |
 | Kompakt | Pille mit Symbol links, Inhalt rechts (z. B. Cover + Visualizer, Timer-Ring + Restzeit) |
 | Kreis | Zweite Aktivität als 36-px-Kreis neben der Pille; Claude zeigt Ring + Dauer, beim Drüberfahren breit mit Text |
 | Banner | Pille mit Titel + Untertitel (Nachrichten, Geräte, Termine); „klein“: 50 px hoch, max. 360 px breit |
@@ -162,7 +162,8 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 | Schlüssel | Seite |
 |---|---|
 | `dashboard` | Übersicht: Uhr, CPU/RAM/Akku, Kacheln (bis 12), Mini-Player |
-| `calendar` | **Heute**: Wetter links, nächste 3 Termine rechts |
+| `weather` | **Wetter**: jetzt, 6 Stunden, 3 Tage (farbige Symbole) |
+| `calendar` | **Kalender**: nächste 3 Termine (optional Wetter links) |
 | `todo` | Microsoft To Do |
 | `ai` | Gemini-Chat, Rechner, Text-Drop-Zone |
 | `player` | Spotify- oder Medien-Player |
@@ -171,7 +172,9 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 | `bluetooth` | AirPods-, Kopfhörer- oder Bluetooth-Seite |
 | `downloads`, `clipboard`, `apps`, `brightness`, `shortcuts` | Panels |
 
-**Seitensymbole** oben: farbig oder alle weiß (Einstellung); Claude und Discord mit eigenen gezeichneten Logos.
+**Schrift & Stil der Seiten** (Einstellungen → Allgemein → Seiten): `PageFont` (Normal 1,0 · Groß 1,2 · Größer 1,4 · Sehr groß 1,6; Standard 1,2) vergrößert die Schrift beim Aufbau einer Seite (`Ui.TextBoost`, Symbole wachsen mit 60 % mit) – die Island bleibt gleich groß. `PageStyle` „clean“ (aufgeräumt: weniger Einzelheiten, größer – z. B. Wetter ohne Gefühlt/Wind/Regen-%, Kalender max. 3 Termine, Bluetooth ohne Linkzeile) oder „full“ (ausführlich). Pro Seite eigene Werte über den Knopf **Aa** in „Seiten & Widgets“ (`PageLooks[key] = { Font, Style }`, leer = wie alle).
+
+**Seitensymbole** oben (Symbol 13 px, Feld 21 px hoch – größer, die Island bleibt gleich groß): farbig oder alle weiß (Einstellung); Claude und Discord mit eigenen gezeichneten Logos.
 **Wisch-Vorschau:** zuletzt angezeigte Fassung jeder Seite wird zwischengespeichert und beim Ziehen daneben gezeigt; unbekannte Seiten als Symbol + Name. Beim Loslassen gleitet die neue Seite nahtlos weiter (Federanimation, kein Ausblenden).
 
 ---
@@ -185,7 +188,9 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 - **Player-Design (`PlayerUi`):** großes Cover (124 px) mit Farb-Leuchten links; rechts Titel, Künstler, Gerät/App, Spulleiste, Steuerung. Animationen: Cover schrumpft bei Pause (0,88), Songwechsel mit Überblenden + Titel-Einschub, Play-Knopf federt.
 - „Zurück zum Player“ öffnet den Player immer (auch pausiert, 2 Minuten erreichbar).
 
-### 8.2 Heute: Wetter + Kalender
+### 8.2 Wetter und Kalender (getrennte Seiten)
+- **Getrennt einstellbar:** Wetter → „Eigene Seite“ und „In der kleinen Ansicht neben der Uhr“; Kalender → „Eigene Seite“ und „Wetter links auf der Kalender-Seite“ (`CalendarWithWeather`). Migration v8 trennt die frühere Seite „Heute“ wieder.
+- **Wetter-Seite:** Kopf (Symbol, Temperatur, Ort, Beschreibung · Max/Min), 5–6 Stunden mit Tagesname („So 19“); 3 Tage mit vollem Tagesnamen nur im Stil „Ausführlich“.
 - **Wetter:** Open-Meteo (ohne Konto), alle 15 min; Ort aus Einstellungen oder – nur auf Wunsch – Windows-Standort (im Hintergrund, 15 s Zeitlimit). Jetzt, 4–6 Stunden, 3 Tage.
 - **Kalender:** iCal-Adressen (verschlüsselt gespeichert), Erinnerung X Minuten vorher, Ansage per Sprachausgabe, „Beitreten“ bei Online-Meetings, Countdown-Aktivität.
 
@@ -206,7 +211,7 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 
 ### 8.5 Nachrichten & Antworten
 - Windows-Benachrichtigungen werden gespiegelt (WhatsApp, Teams …), eingehende Anrufe größer.
-- **Antworten:** Eingabefeld in der Island → App wird aktiviert, Chat geöffnet (WhatsApp: Suche; Discord-DM: Direktlink; Server-Kanal: Schnellsuche), Text eingefügt und – wenn erlaubt – gesendet. Andere Apps: nur einfügen.
+- **Antworten:** Knopf nur bei Chat-Apps (WhatsApp, Discord, Teams, Telegram, Signal, Messenger, Slack, Instagram, Skype, Threema, Element, Smartphone-Link) – nicht bei Updates, Mails oder Systemmeldungen. Eingabefeld in der Island → App wird aktiviert, Chat geöffnet (WhatsApp: Suche; Discord-DM: Direktlink; Server-Kanal: Schnellsuche), Text eingefügt und – wenn erlaubt – gesendet. Andere Apps: nur einfügen.
 
 ### 8.6 Geräte
 - **Bluetooth-Seite (Apple-Stil):** runder Bluetooth-Knopf als Schalter (blau = an), Status „An · 1 Gerät verbunden“, Zahnrad zu den Einstellungen; Geräte als Kacheln in zwei Spalten (verbunden = blauer Kreis + „Verbunden · 80 %“).
@@ -287,6 +292,8 @@ Katzen hüpfen bei jeder Animation mit. „Bewegungen reduzieren“ (Windows) sc
 | `/claude` | POST | Claude-Code-Hook-JSON entgegennehmen |
 | `/claude-limits` | POST | Statuszeilen-JSON von Claude Code (Nutzungs-Limits) |
 | `/logitech` | GET | Akku von Logitech-Maus/-Tastatur groß zeigen |
+| `/page?key=` · `?dir=` | GET | Seite der großen Island öffnen (weather, calendar, todo …, `close` = zuklappen) oder wischen (`dir=1/-1`) |
+| `/demo?on=1|0` | GET | Demo-Modus für Aufnahmen: Medien (Titel, Cover, Player-Seite) ausblenden |
 
 Beispiel: `http://localhost:7843/show?id=fussball&title=FCB%202:1%20BVB&right=67'&emoji=⚽`
 
@@ -312,7 +319,7 @@ Gespeichert in `%APPDATA%\DynamicIsland\einstellungen.json`. Gruppen (Auswahl):
 | Katzen | `CatsMode` (`expanded`/`always`/`off`), `CatsStayVisible`, `CatsCurl`, `CatsWalk`, `Cats` |
 | Dienste | Spotify-, Discord-, To-Do-, Gemini-, Kalender-, Wetter-, AirPods-, Claude-Einstellungen |
 
-Migrationen laufen beim Laden automatisch (z. B. neue Seiten einfügen, „Wetter“ in „Heute“ zusammenführen, alte Animations-Schalter übernehmen).
+Migrationen laufen beim Laden automatisch (z. B. neue Seiten einfügen, Wetter und Kalender als getrennte Seiten (v8), alte Animations-Schalter übernehmen).
 
 ---
 
@@ -364,8 +371,9 @@ DynamicIsland/
 │  ├─ PlayerUi.cs          Gemeinsames Player-Layout + Animationen
 │  ├─ Spotlight.cs         „App im Vordergrund“
 │  ├─ TimerPicker.cs       Timer-Auswahl (Drehräder wie iPhone-Uhr)
-│  ├─ CalendarActivity.cs  Seite „Heute“ (Wetter + Termine)
-│  ├─ WeatherActivity.cs   Wetter-Widget
+│  ├─ CalendarActivity.cs  Seite „Kalender“ (Termine, optional Wetter)
+│  ├─ WeatherActivity.cs   Seite „Wetter“ + Wetter-Widget
+│  ├─ WeatherIcon.cs      farbige Wetter-Symbole (Vektor)
 │  ├─ TodoActivity.cs, AiActivity.cs, Panels.cs, Widgets.cs
 │  ├─ DiscordVoice.cs, ReplyActivity.cs
 │  ├─ AirPodsActivity.cs, HeadphonesActivity.cs, BluetoothActivity.cs
@@ -381,7 +389,7 @@ DynamicIsland/
 │  ├─ Downloads.cs, GameDownloads.cs
 │  ├─ ScreenOcr.cs, SystemTools.cs, Native.cs, LiquidGlass.cs
 │  └─ Settings.cs
-└─ docs/                   Grafiken für die README: Standbilder (PNG) und Animationen (GIF: claude-fertig, licht-effekte, lichtring, kopieren, claude-limits, logitech)
+└─ docs/                   Grafiken für die README: Standbilder (PNG) und Animationen (GIF: seiten, wetter, claude-fertig, licht-effekte, lichtring, kopieren, claude-limits, logitech; aufgenommen im Demo-Modus `/demo` ohne Medien-Titel)
 ```
 
 ---
@@ -394,5 +402,5 @@ DynamicIsland/
 - **WhatsApp-Antworten** öffnen den Chat über die Suche – bei ähnlichen Namen kann der erste Treffer falsch sein (deshalb „direkt absenden“ abschaltbar).
 - **Hotkeys:** beim Neu-Registrieren werden nur die IDs 1–6 abgemeldet, registriert werden 1–9.
 - **Epic-Downloads** ohne Prozentangabe; Steam aktualisiert den Fortschritt teils sprunghaft.
-- **Emojis** (Wetter) werden von WPF einfarbig gezeichnet.
+- **Emojis** werden von WPF einfarbig gezeichnet – Wetter nutzt deshalb eigene Vektor-Symbole (`WeatherIcon`).
 - Discord „Stream beenden“ hängt von der Beschriftung im Discord-Fenster ab (deutsch/englisch erkannt).

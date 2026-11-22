@@ -7,7 +7,7 @@ using System.Windows.Media;
 
 namespace DynamicIsland
 {
-    /// <summary>Seite „Heute“: Wetter und die nächsten Termine von heute und morgen.</summary>
+    /// <summary>Seite „Kalender“: die nächsten Termine von heute und morgen (auf Wunsch links das Wetter).</summary>
     public sealed class CalendarActivity : Activity
     {
         public const string Glyph = "";
@@ -26,7 +26,7 @@ namespace DynamicIsland
         public override Size ExpandedSize => new Size(420, 240);
 
         public override FrameworkElement BuildCompact() =>
-            Ui.Row3(Ui.HStack(7, Ui.Glyph(Glyph, 14, Ui.Br(Ui.Red)), Ui.Text("Heute", 13, Ui.White)), null, null, new Thickness(13, 0, 15, 0));
+            Ui.Row3(Ui.HStack(7, Ui.Glyph(Glyph, 14, Ui.Br(Ui.Red)), Ui.Text("Kalender", 13, Ui.White)), null, null, new Thickness(13, 0, 15, 0));
 
         public override FrameworkElement BuildMinimal() => Ui.Glyph(Glyph, 14, Ui.Br(Ui.Red));
 
@@ -34,13 +34,20 @@ namespace DynamicIsland
         {
             var list = host.Calendar.Upcoming(MaxRows);
             return string.Join(";", list.Select(e => e.Key)) + "|" + DateTime.Now.ToString("HHmm") + "|" + host.Calendar.HasCalendars
-                   + "|" + host.Weather.LastUpdate.Ticks + "|" + host.Weather.Error;
+                   + "|" + host.Weather.LastUpdate.Ticks + "|" + host.Weather.Error + "|" + host.Calendar.Status;
         }
 
-        /// <summary>Seite „Heute“: links das Wetter, rechts die Termine.</summary>
+        /// <summary>Seite „Kalender“: Termine, optional links das Wetter.</summary>
         public override FrameworkElement BuildExpanded()
         {
             shownKey = StateKey();
+            if (!host.Settings.CalendarWithWeather)
+            {
+                // nur Termine (Wetter hat eine eigene Seite)
+                var only = CalendarColumn();
+                only.Margin = new Thickness(22, 14, 22, 10);
+                return only;
+            }
             var grid = new Grid { Margin = new Thickness(20, 14, 20, 10) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
@@ -73,7 +80,7 @@ namespace DynamicIsland
                 return card;
             }
 
-            var icon = Ui.Glyph(WeatherService.Emoji(w.Code, w.IsDay), 30, Ui.White, Ui.EmojiFont);
+            var icon = WeatherIcon.Create(w.Code, w.IsDay, 34);
             icon.VerticalAlignment = VerticalAlignment.Center;
             var temp = Ui.Text(WeatherService.Deg(w.Temp), 32, Ui.White);
             temp.FontWeight = FontWeights.SemiBold;
@@ -91,7 +98,7 @@ namespace DynamicIsland
             {
                 var cell = Ui.VStack(1,
                     Center(Ui.Text(h.Time.ToString("HH"), 10.5, Ui.Dim, false)),
-                    Center(Ui.Glyph(WeatherService.Emoji(h.Code, h.Day), 14, Ui.White, Ui.EmojiFont)),
+                    Center(WeatherIcon.Create(h.Code, h.Day, 17)),
                     Center(Ui.Text(WeatherService.Deg(h.Temp), 11.5, Ui.White)));
                 hours.Children.Add(cell);
             }
@@ -102,13 +109,16 @@ namespace DynamicIsland
         static FrameworkElement Center(FrameworkElement e) { e.HorizontalAlignment = HorizontalAlignment.Center; return e; }
 
         // ---------- Termine (rechts) ----------
+        bool clean;
+
         FrameworkElement CalendarColumn()
         {
+            clean = host.CleanPage(this);
             var cal = host.Calendar;
             var root = new StackPanel();
 
-            var today = Ui.Text(DateTime.Now.ToString("dddd, d. MMMM", Ui.De), 12, Ui.Br(Ui.Red));
-            var title = Ui.Text("Termine", 17, Ui.White);
+            var today = Ui.Text(DateTime.Now.ToString("dddd, d. MMMM", Ui.De), clean ? 13 : 12, Ui.Br(Ui.Red));
+            var title = Ui.Text("Termine", clean ? 20 : 17, Ui.White);
             var head = new Grid();
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -123,7 +133,7 @@ namespace DynamicIsland
             head.Children.Add(btns);
             root.Children.Add(head);
 
-            var list = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+            var list = new StackPanel { Margin = new Thickness(0, clean ? 8 : 10, 0, 0) };
             if (!cal.HasCalendars)
             {
                 list.Children.Add(Hint("Noch kein Kalender verknüpft."));
@@ -133,17 +143,18 @@ namespace DynamicIsland
             }
             else
             {
-                var items = cal.Upcoming(MaxRows);
-                if (items.Count == 0) list.Children.Add(Hint(cal.LastSync == default ? "Wird geladen …" : "Keine Termine heute und morgen. 🎉"));
+                var items = cal.Upcoming(clean ? 3 : MaxRows);
+                if (items.Count == 0) list.Children.Add(Hint(cal.LastSync != default ? "Keine Termine heute und morgen. 🎉" : cal.Status == "Noch nicht geladen" ? "Wird geladen …" : cal.Status + " – Adresse in den Einstellungen prüfen"));
                 foreach (var e in items) list.Children.Add(Row(e));
             }
             root.Children.Add(list);
             return root;
         }
 
-        static TextBlock Hint(string t)
+        TextBlock Hint(string t)
         {
-            var x = Ui.Text(t, 13, Ui.Dim, false);
+            var x = Ui.Text(t, clean ? 14.5 : 13, Ui.Dim, false);
+            x.TextWrapping = TextWrapping.Wrap;
             x.Margin = new Thickness(2, 6, 0, 0);
             return x;
         }
@@ -163,10 +174,10 @@ namespace DynamicIsland
         {
             bool running = e.Start <= DateTime.Now && e.End > DateTime.Now && !e.AllDay;
             var bar = new Border { Width = 3, CornerRadius = new CornerRadius(1.5), Background = Ui.Br(running ? Ui.Green : Ui.Red), Margin = new Thickness(0, 6, 10, 6) };
-            var t = Ui.Text(e.Title, 13.5, Ui.White);
+            var t = Ui.Text(e.Title, clean ? 15 : 13.5, Ui.White);
             t.TextTrimming = TextTrimming.CharacterEllipsis;
             string sub = When(e) + (string.IsNullOrEmpty(e.Location) || e.Link != null && e.Location.Contains("http") ? "" : " · " + e.Location.Split('\n')[0]);
-            var st = Ui.Text(sub, 11.5, Ui.Dim, false);
+            var st = Ui.Text(sub, clean ? 12.5 : 11.5, Ui.Dim, false);
             st.TextTrimming = TextTrimming.CharacterEllipsis;
             var texts = Ui.VStack(1, t, st);
             texts.VerticalAlignment = VerticalAlignment.Center;
@@ -187,7 +198,7 @@ namespace DynamicIsland
                     Padding = new Thickness(11, 0, 11, 0),
                     Cursor = Cursors.Hand,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Child = Ui.Text("Beitreten", 12, Brushes.Black)
+                    Child = Ui.Text("Beitreten", clean ? 13 : 12, Brushes.Black)
                 };
                 ((TextBlock)join.Child).VerticalAlignment = VerticalAlignment.Center;
                 var link = e.Link;
@@ -197,7 +208,7 @@ namespace DynamicIsland
                 Grid.SetColumn(join, 2);
                 g.Children.Add(join);
             }
-            return new Border { Height = 42, Margin = new Thickness(0, 0, 0, 2), Child = g, Background = Brushes.Transparent };
+            return new Border { MinHeight = (clean ? 48 : 42) * Ui.TextBoost, Margin = new Thickness(0, 0, 0, 2), Child = g, Background = Brushes.Transparent };
         }
 
         public override void Update()

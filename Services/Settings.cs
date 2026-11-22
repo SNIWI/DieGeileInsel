@@ -14,6 +14,13 @@ namespace DynamicIsland
         public List<string> Widgets { get; set; } = new List<string>();
     }
 
+    /// <summary>Eigene Darstellung einer Seite (0 / null = wie bei allen Seiten).</summary>
+    public sealed class PageLook
+    {
+        public double Font { get; set; }
+        public string Style { get; set; }
+    }
+
     public sealed class Settings
     {
         public bool IdlePill { get; set; } = true;
@@ -37,6 +44,12 @@ namespace DynamicIsland
         public double PageWide { get; set; } = 1.3;
         /// <summary>Seitensymbole oben in der großen Island farbig (sonst alle weiß).</summary>
         public bool NavIconsColor { get; set; } = true;
+        /// <summary>Schrift in den Seiten der großen Island – unabhängig von deren Größe (1 = wie entworfen).</summary>
+        public double PageFont { get; set; } = 1.2;
+        /// <summary>Stil der Seiten: „clean“ = aufgeräumt (weniger, größer) · „full“ = ausführlich.</summary>
+        public string PageStyle { get; set; } = "clean";
+        /// <summary>Pro Seite eigene Schrift / eigener Stil (Schlüssel wie in Pages).</summary>
+        public Dictionary<string, PageLook> PageLooks { get; set; } = new Dictionary<string, PageLook>();
         /// <summary>Animation, wenn etwas fertig ist (Claude, Timer, Download): off, glow, bounce, both.</summary>
         public string DoneAnimation { get; set; } = "both";
         /// <summary>Bei welchen Ereignissen die Animation läuft (claude, timer, download, copy, message, device).</summary>
@@ -85,6 +98,8 @@ namespace DynamicIsland
         public int CalendarRemind { get; set; } = 10;      // Minuten vorher, 0 = aus
         public bool CalendarSpeak { get; set; } = true;
         public bool CalendarAtStart { get; set; } = true;
+        /// <summary>Wetter zusätzlich links auf der Kalender-Seite (früher Seite „Heute“).</summary>
+        public bool CalendarWithWeather { get; set; }
 
         // Microsoft To Do
         public string TodoClientId { get; set; }
@@ -319,7 +334,16 @@ namespace DynamicIsland
                 }
                 s.PagesVersion = 7;
             }
-            s.Pages.Remove("weather");
+            if (s.PagesVersion < 8)
+            {
+                // Wetter und Kalender sind wieder getrennte Seiten (einzeln an-/abschaltbar)
+                int ci = s.Pages.IndexOf("calendar");
+                if (ci >= 0 && !s.Pages.Contains("weather")) s.Pages.Insert(ci, "weather");
+                s.PagesVersion = 8;
+            }
+            s.PageLooks ??= new Dictionary<string, PageLook>();
+            if (s.PageFont <= 0) s.PageFont = 1.2;
+            if (string.IsNullOrEmpty(s.PageStyle)) s.PageStyle = "clean";
             s.WidgetPages ??= new List<WidgetPageConfig>();
             if (!s.Pages.Contains("dashboard")) s.Pages.Insert(0, "dashboard");
             if (string.IsNullOrWhiteSpace(s.AirPodsNameFilter)) s.AirPodsNameFilter = "AirPods";

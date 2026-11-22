@@ -108,8 +108,13 @@ namespace DynamicIsland
             }
         }
 
+        /// <summary>Schrift-Faktor beim Aufbau einer Seite der großen Island (sonst 1). Symbole wachsen etwas weniger mit.</summary>
+        public static double TextBoost = 1;
+        public static double GlyphBoost => 1 + (TextBoost - 1) * 0.6;
+
         public static TextBlock Text(string s, double size, Brush fg = null, bool bold = true, bool mono = false)
         {
+            size *= TextBoost;
             var t = new TextBlock
             {
                 Text = s ?? "",
@@ -129,7 +134,7 @@ namespace DynamicIsland
         {
             Text = g ?? "",
             FontFamily = font ?? IconFont,
-            FontSize = size,
+            FontSize = size * GlyphBoost,
             Foreground = fg ?? White,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,

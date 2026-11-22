@@ -634,13 +634,15 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
         // Steht auch in der Leerlauf-Pille: Uhrzeit links, Wetter (oder Akku/Datum) rechts
         public override double CompactWidth => 200;
 
-        TextBlock wIcon;
+        Border wIcon;
+        string wKey;
 
         public override FrameworkElement BuildCompact()
         {
             time = Ui.Text("", 13.5, Ui.White, true, true);
             right = Ui.Text("", 12.5, Ui.Dim, false, true);
-            wIcon = Ui.Glyph("", 13, Ui.Dim, Ui.EmojiFont);
+            wIcon = new Border { Width = 16, Height = 16 };
+            wKey = null;
             wIcon.Margin = new Thickness(0, 0, 5, 0);
             wIcon.VerticalAlignment = VerticalAlignment.Center;
             var g = Ui.Row3(time, null, Ui.HStack(0, wIcon, right), new Thickness(16, 0, 16, 0));
@@ -658,7 +660,9 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             if (w != null && w.HasData && st.WeatherEnabled)
             {
                 wIcon.Visibility = Visibility.Visible;
-                wIcon.Text = WeatherService.Emoji(w.Code, w.IsDay);
+                // farbiges Symbol – nur neu zeichnen, wenn sich das Wetter ändert
+                string k = w.Code + "|" + w.IsDay;
+                if (k != wKey) { wKey = k; wIcon.Child = WeatherIcon.Create(w.Code, w.IsDay, 16); }
                 right.Text = WeatherService.Deg(w.Temp);
             }
             else
@@ -706,7 +710,7 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             return list;
         }
         int TileRows => Math.Max(1, (Tiles().Count + 3) / 4);
-        bool HasPlayer => host.Settings.DashPlayer && host.Media.ShouldShow;
+        bool HasPlayer => host.Settings.DashPlayer && host.Media.ShouldShow && !IslandWindow.Demo;
         public override Size ExpandedSize => new Size(420, 240);
 
         /// <summary>Was die AirPods-Kachel gerade zeigt – ändert es sich, baut die Island die Übersicht neu.</summary>
@@ -919,10 +923,10 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
         public static string Date(Settings s, DateTime n) => s.ClockDate switch
         {
             "long" => n.ToString("dddd, d. MMMM", Ui.De),
-            "week" => n.ToString("ddd, d. MMM", Ui.De) + " · KW " + ISOWeek.GetWeekOfYear(n),
+            "week" => n.ToString("dddd, d. MMM", Ui.De) + " · KW " + ISOWeek.GetWeekOfYear(n),
             "numeric" => n.ToString("dd.MM.yyyy", Ui.De),
             "off" => "",
-            _ => n.ToString("ddd, d. MMM", Ui.De),
+            _ => n.ToString("dddd, d. MMM", Ui.De),   // voller Tagesname
         };
 
         public static FontWeight Weight(Settings s) =>

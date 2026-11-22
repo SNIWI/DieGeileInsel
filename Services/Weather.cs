@@ -211,6 +211,6 @@ namespace DynamicIsland
             return "🌡️";
         }
 
-        public static string Deg(double t) => Math.Round(t).ToString("0", CultureInfo.InvariantCulture) + "°";
+        public static string Deg(double t) { double r = Math.Round(t); if (r == 0) r = 0; return r.ToString("0", CultureInfo.InvariantCulture) + "°"; }   // nie „-0°“
     }
 }
