@@ -194,7 +194,8 @@ Reihenfolge und Auswahl sind einstellbar (*Einstellungen → Seiten & Widgets*).
 - **ClaudeTracker** führt pro Sitzung eine `ClaudeActivity`: Zustände *arbeitet* (orange, drehender Ring), *wartet* (gelb, „!“), *fertig* (grün, ✓). Werkzeuge werden in deutsche Sätze übersetzt („Bearbeitet Cats.cs“, „Sucht …“, „Denkt nach …“).
 - **„Claude ist fertig“:** Der Kreis gleitet in einer Bewegung hinter die Pille und verschmilzt mit ihr, zeitgleich mit dem Strecken (440 ms). Sein ✓ (ohne Ring, in der Ereignisfarbe) liegt auf einer eigenen Ebene über der Pille und gleitet dabei mit dem Kreis an den rechten Rand der Meldung – mit demselben Randabstand wie das Symbol links (`AlertLook.SpotPadLeft`). Am Ende der Meldung löst sich der Kreis federnd wieder heraus und nimmt das ✓ wieder mit; nach insgesamt 6 s ist er weg.
 - Titel, Logo und ✓-Abzeichen der Meldung „Claude ist fertig“ nehmen die eingestellte Ereignisfarbe an (sonst Weiß bzw. Claude-Orange).
-- Schutz gegen sich überholende Signale (kein „arbeitet“ nach „fertig“). Ein `/compact` von Hand legt keinen neuen Kreis an.
+- **Zeit der Aufgabe:** zählt ab deiner Nachricht. Startet die Island neu oder macht Claude ohne neue Nachricht weiter (kein `UserPromptSubmit`, z. B. Fortsetzung in der Claude-App), wird der Beginn aus dem Zeitstempel der letzten echten Nachricht im Verlauf (`transcript_path`, UTC → Ortszeit, max. 12 h alt) übernommen – nicht „jetzt“.
+- Schutz gegen sich überholende Signale: ein „Werkzeug startet“ bis 4 s nach „fertig“ wird ignoriert; kommt es später, beginnt eine neue Aufgabe. Ein `/compact` von Hand legt keinen neuen Kreis an.
 - Läuft Claude nicht mehr, verschwindet der Kreis auch ohne „Stop“: Abbruch mit Esc (Vermerk `[Request interrupted by user]` im Verlauf aus `transcript_path`), kein `claude`-Prozess mehr, oder Stille (6 min; 12 min während ein Werkzeug läuft; 30 min beim Warten).
 - Einrichtung per Knopf in den Einstellungen; die Seite „Claude“ erscheint nur, wenn Claude installiert ist.
 
@@ -260,7 +261,7 @@ Katzen hüpfen bei jeder Animation mit. „Bewegungen reduzieren“ (Windows) sc
 - Dateien gehen immer direkt nach Obsidian; Text nur, wenn die KI-Drop-Zone aus ist – sonst erscheint dort die Karte „In Obsidian“. Bestätigung „… gespeichert“, Antippen öffnet die Notiz.
 
 ### 8.13 Claude: Limits & Spracheingabe
-- **Nutzungs-Limits** (Pro/Max): „Verbinden“ trägt zusätzlich eine Statuszeile in Claude Code ein (nur wenn noch keine eigene existiert), die das Statuszeilen-JSON an `/claude-limits` schickt und selbst nichts anzeigt. Werte (`rate_limits.five_hour` / `seven_day`: Prozent + Reset) stehen in den Details der Claude-Pille, auf der Kachel „Claude-Limits“ und in Einstellungen → Claude. Warnung bei 80 % und 95 % je Fenster (`ClaudeLimitWarn`), pro Fenster nur einmal je Stufe.
+- **Nutzungs-Limits** (Pro/Max) gibt es nur von **Claude Code im Terminal** – die Claude-App selbst schickt keine. Angezeigt werden nur echte, höchstens 12 h alte Werte; `used_percentage` wird auf 0–100 begrenzt, `resets_at` als Unix-Sekunden, Millisekunden oder ISO-Datum gelesen. „Verbinden“ trägt zusätzlich eine Statuszeile in Claude Code ein (nur wenn noch keine eigene existiert), die das Statuszeilen-JSON an `/claude-limits` schickt und selbst nichts anzeigt. Werte (`rate_limits.five_hour` / `seven_day`: Prozent + Reset) stehen in den Details der Claude-Pille, auf der Kachel „Claude-Limits“ und in Einstellungen → Claude. Warnung bei 80 % und 95 % je Fenster (`ClaudeLimitWarn`), pro Fenster nur einmal je Stufe.
 - **Claude diktieren** (Kachel): holt das Claude-Fenster nach vorn (sonst bleibt das aktive Fenster, z. B. Terminal) und startet die Windows-Spracheingabe (Win+H).
 
 ### 8.14 KI-Anbieter
@@ -272,7 +273,7 @@ Katzen hüpfen bei jeder Animation mit. „Bewegungen reduzieren“ (Windows) sc
 - **Licht „Umlauf“** nimmt die Zielgröße der Island und folgt ihr (vorher zu kurz, weil die Island beim Hinweis gerade erst wächst).
 - **Position nach Monitor-Wechsel:** DPI fest aus dem Fenster statt aus der Hauptbildschirm-Breite; nach `DisplaySettingsChanged` mehrfach neu platzieren (0,4 / 1,5 / 4 / 9 s), Wächter alle 2 s; die gespeicherte Position wird dabei nicht verändert.
 - **SoundCloud** im Browser oder als App wird als Quelle „SoundCloud“ erkannt (Browserfenster mit „SoundCloud“ und dem Songtitel im Titel).
-- **Logitech-Akku** (`Logitech.cs`, Einstellung `LogitechEnabled`): liest per HID++ 2.0 direkt über Windows (ohne G HUB/Options+) Name, Typ und Akku kabelloser Logitech-Geräte – an Lightspeed-/Bolt-/Unifying-Empfängern (Geräte 1–6, Schnittstelle FF00/0002) und per Bluetooth (FF43/0202); Funktionen 0x1004, 0x1000 oder 0x1001 (Spannung → %). Alle 2 Min im Hintergrund. Hinweis nur bei wenig Akku: unter der eingestellten Grenze (`LogitechWarnAt`, 10/15/20/30 %, Standard 15 %) und nochmal bei 5 % – je einmal, bis geladen wird. Keine Meldung beim Verbinden oder Vollladen. Anzeige auf der Bluetooth-Seite (zuerst), Kachel „Maus & Tastatur“ und `/logitech` (API).
+- **Logitech-Akku** (`Logitech.cs`, Einstellung `LogitechEnabled`): liest per HID++ 2.0 direkt über Windows (ohne G HUB/Options+) Name, Typ und Akku kabelloser Logitech-Geräte – an Lightspeed-/Bolt-/Unifying-Empfängern (Geräte 1–6, Schnittstelle FF00/0002) und per Bluetooth (FF43/0202); Funktionen 0x1004, 0x1000 oder 0x1001 (Spannung → %). Alle 2 Min im Hintergrund. Schläft ein Gerät (antwortet nicht), bleibt der letzte Wert bis zu 24 h mit „Ruhezustand“ stehen – ohne neue Meldung. Hinweis nur bei wenig Akku: unter der eingestellten Grenze (`LogitechWarnAt`, 10/15/20/30 %, Standard 15 %) und nochmal bei 5 % – je einmal, bis geladen wird. Keine Meldung beim Verbinden oder Vollladen. Anzeige auf der Bluetooth-Seite (zuerst), Kachel „Maus & Tastatur“ und `/logitech` (API).
 ---
 
 ## 9. Schnittstellen
@@ -340,7 +341,9 @@ Migrationen laufen beim Laden automatisch (z. B. neue Seiten einfügen, „Wette
 |---|---|
 | Starten (Entwicklung) | `Starten.bat` → `dotnet build -c Release` und Start |
 | Einzelne EXE (benötigt .NET) | `Als-EXE-bauen.bat` → `dotnet publish -r win-x64 --self-contained false -p:PublishSingleFile=true` |
-| Eigenständige EXE (geplant für Releases) | `dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true` |
+| Eigenständige EXE (GitHub-Releases) | `dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none` → ca. 75 MB, läuft ohne .NET |
+
+Releases: v1.0.0 (erste EXE), v1.1.0 (Logitech, Obsidian, KI-Anbieter, Claude-Limits, Anrufe), v1.2.0 (Claude-Zeiten/-Limits korrigiert, Logitech-Ruhezustand, mehr Animationen in der README).
 
 Autostart: *Einstellungen → System → Mit Windows starten* (Registry `HKCU\…\Run`).
 
@@ -378,7 +381,7 @@ DynamicIsland/
 │  ├─ Downloads.cs, GameDownloads.cs
 │  ├─ ScreenOcr.cs, SystemTools.cs, Native.cs, LiquidGlass.cs
 │  └─ Settings.cs
-└─ docs/                   Grafiken für die README
+└─ docs/                   Grafiken für die README: Standbilder (PNG) und Animationen (GIF: claude-fertig, licht-effekte, lichtring, kopieren, claude-limits, logitech)
 ```
 
 ---

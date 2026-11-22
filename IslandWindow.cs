@@ -2403,7 +2403,7 @@ namespace DynamicIsland
                     g.LeftText = known ? "5 Std " + Math.Round(f ?? 0) + " %" : "Claude-Limits";
                     g.RightText = known && w != null ? "Woche " + Math.Round(w.Value) + " %" : "";
                     g.Subtitle = !known
-                        ? (ClaudeTracker.LimitsInstalled() ? "Noch keine Daten – schick Claude eine Nachricht" : "Einstellungen → Claude → verbinden")
+                        ? (ClaudeTracker.LimitsInstalled() ? "Kommt mit der nächsten Antwort von Claude Code im Terminal" : "Einstellungen → Claude → Neu einrichten")
                         : "5 Stunden: " + Math.Round(f ?? 0) + " %" + (ClaudeTracker.FiveReset != default ? " · frei " + ClaudeTracker.ResetText(ClaudeTracker.FiveReset) : "");
                     g.Detail = known && w != null
                         ? "Woche: " + Math.Round(w.Value) + " %" + (ClaudeTracker.WeekReset != default ? " · frei " + ClaudeTracker.ResetText(ClaudeTracker.WeekReset) : "") +
@@ -4104,9 +4104,13 @@ namespace DynamicIsland
             bool first = !logiScanned;
             logiScanned = true;
             var before = logi;
+            // schlafende Geräte (Maus in Ruhe antwortet nicht) mit dem letzten Wert behalten – bis 24 Stunden
+            foreach (var o in before)
+                if (!now.Any(x => x.Name == o.Name) && (DateTime.Now - o.SeenAt).TotalHours < 24) { o.Asleep = true; now.Add(o); }
             logi = now;
             foreach (var d in now)
             {
+                if (d.Asleep) continue;   // schläft: alter Wert, keine neue Meldung
                 var old = before.FirstOrDefault(x => x.Name == d.Name);
                 // eingeschaltet / neu verbunden
                 // wenig Akku: bei 15 % und 5 % je einmal (zurückgesetzt, sobald geladen wird)
@@ -4168,7 +4172,7 @@ namespace DynamicIsland
                     g.RightText = low.Percent + " %";
                     g.Accent = LogiColor(low);
                     g.Subtitle = string.Join("  ·  ", list.Select(x => x.Name + " " + x.Percent + " %" + (x.Charging ? " ⚡" : "")));
-                    g.Detail = string.Join("\n", list.Select(x => x.Name + ": " + (x.Full ? "voll geladen" : x.Charging ? "lädt, " + x.Percent + " %" : x.Percent + " %")));
+                    g.Detail = string.Join("\n", list.Select(x => x.Name + ": " + (x.Full ? "voll geladen" : x.Charging ? "lädt, " + x.Percent + " %" : x.Percent + " %") + (x.Asleep ? " · Ruhezustand (zuletzt " + x.SeenAt.ToString("HH:mm") + ")" : "")));
                     g.Progress = low.Percent / 100.0;
                 }
             };

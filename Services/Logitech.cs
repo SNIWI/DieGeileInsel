@@ -18,6 +18,9 @@ namespace DynamicIsland
         public int Kind = -1;
         public int Percent;
         public bool Charging, Full;
+        /// <summary>Gerät schläft gerade (antwortet nicht) – Wert ist der zuletzt gelesene.</summary>
+        public bool Asleep;
+        public DateTime SeenAt = DateTime.Now;
         public bool IsMouse => Kind == 3 || Kind == 4 || Kind == 5;
         public bool IsKeyboard => Kind == 0 || Kind == 2;
         public string Glyph => IsKeyboard ? "" : Kind == 8 ? "" : "";

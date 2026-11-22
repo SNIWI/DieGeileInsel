@@ -127,7 +127,7 @@ namespace DynamicIsland
             // Logitech-Mäuse/-Tastaturen (Empfänger oder Bluetooth) mit Akku zuerst
             var logi = host.LogiDevices.ToList();
             var items = logi.Select(l => (name: l.Name, connected: true, glyph: l.Glyph,
-                                          state: l.Full ? "Voll geladen" : l.Charging ? $"Lädt · {l.Percent} %" : $"Akku {l.Percent} %",
+                                          state: (l.Full ? "Voll geladen" : l.Charging ? $"Lädt · {l.Percent} %" : $"Akku {l.Percent} %") + (l.Asleep ? " · ruht" : ""),
                                           low: !l.Charging && l.Percent <= 15))
                 .Concat(devices.Where(d => !logi.Any(l => string.Equals(l.Name, d.name, StringComparison.OrdinalIgnoreCase)))
                     .Select(d =>

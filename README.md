@@ -17,23 +17,38 @@
 
 ## ✨ Highlights
 
-### 🆕 Neu in 1.1
+### 🎬 So sieht das aus
 
 <table>
 <tr>
-<td width="50%"><img src="docs/lichtring.gif" alt="Lichtring"><br><b>Lichtring</b> – läuft einmal komplett um die Island, egal wie groß sie gerade wird.</td>
-<td width="50%"><img src="docs/claude-limits.gif" alt="Claude-Limits"><br><b>Claude-Limits</b> – 5-Stunden- und Wochen-Limit, Warnung bei 80 % und 95 %.</td>
+<td width="50%" align="center"><img src="docs/claude-fertig.gif" alt="Claude ist fertig" width="100%"><br><sub><b>Claude arbeitet → fertig</b><br>Der Kreis zählt mit, fließt in die Island, das ✓ gleitet nach rechts.</sub></td>
+<td width="50%" align="center"><img src="docs/licht-effekte.gif" alt="Licht-Effekte" width="100%"><br><sub><b>Vier Licht-Effekte</b><br>Umlauf · Schein · Glanz · Rahmen – pro Ereignis wählbar.</sub></td>
 </tr>
 <tr>
-<td colspan="2"><img src="docs/logitech.gif" alt="Logitech-Akku" width="60%"><br><b>Maus & Tastatur</b> – Akku von Logitech-Geräten (Lightspeed, Bolt, Unifying, Bluetooth), ganz ohne G HUB. Meldet sich nur, wenn der Akku knapp wird.</td>
+<td width="50%" align="center"><img src="docs/lichtring.gif" alt="Lichtring" width="100%"><br><sub><b>Lichtring</b><br>Läuft einmal komplett um die Island, egal wie groß sie gerade wird.</sub></td>
+<td width="50%" align="center"><img src="docs/kopieren.gif" alt="Kopieren" width="100%"><br><sub><b>Kopieren</b><br>Die Island zeigt kurz, was in der Zwischenablage gelandet ist.</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/claude-limits.gif" alt="Claude-Limits" width="100%"><br><sub><b>Claude-Limits</b><br>5-Stunden- und Wochen-Limit, Warnung bei 80 % und 95 %.</sub></td>
+<td width="50%" align="center"><img src="docs/logitech.gif" alt="Maus und Tastatur" width="100%"><br><sub><b>Maus & Tastatur</b><br>Akku von Logitech-Geräten – meldet sich nur, wenn er knapp wird.</sub></td>
 </tr>
 </table>
+
+### 🆕 Neu in 1.2
+- **Claude-Zeiten stimmen:** Die Dauer zählt ab deiner Nachricht – auch nach einem Neustart der Island oder wenn Claude ohne neue Nachricht weitermacht.
+- **Claude-Limits** zeigen nur noch echte Werte aus Claude Code (keine alten/Test-Werte), Zeitangaben robust gelesen.
+- **Logitech:** Schläft die Maus, bleibt der letzte Akkustand stehen („Ruhezustand“) statt „kein Gerät gefunden“.
+- Mehr Animationen hier in der Übersicht.
+
+<details>
+<summary><b>Neu in 1.1</b></summary>
 
 - **Obsidian:** Text, Links und Dateien auf die Island ziehen – landen in deiner Inbox (oder Tagesnotiz).
 - **Mehrere KIs:** Gemini, ChatGPT, Grok, Claude, Mistral, DeepSeek, OpenRouter.
 - **Anrufe annehmen** (WhatsApp, Teams, Discord) direkt aus der Island, **App-Logo** bei jeder Mitteilung.
 - **Claude diktieren** per Windows-Spracheingabe, **Katzen-Laune** nach Tageszeit und Wetter, **Suche** in den Einstellungen.
 - Island bleibt nach dem Einschalten der Monitore in der Mitte.
+</details>
 
 ### 🎵 Player für Spotify und alle anderen Medien
 Großes Cover mit Farb-Leuchten, Spulen, Zufall, Wiederholen. Das Cover schrumpft beim Pausieren, beim Songwechsel gleitet der Titel herein.

@@ -1017,9 +1017,9 @@ namespace DynamicIsland
             lc.Children.Add(ToggleRow("Warnen bei 80 % und 95 %", s.ClaudeLimitWarn, v => { s.ClaudeLimitWarn = v; Apply(); }, out _));
             lc.Children.Add(Divider());
             lc.Children.Add(StatusText(ClaudeTracker.LimitsLine()
-                ?? (ClaudeTracker.LimitsInstalled() ? "Noch keine Werte – kommen mit der nächsten Antwort von Claude."
+                ?? (ClaudeTracker.LimitsInstalled() ? "Eingerichtet – die Werte kommen mit der nächsten Antwort von Claude Code im Terminal. Die Claude-App selbst schickt keine Limits."
                     : ClaudeTracker.ForeignStatusLine() ? "Du hast schon eine eigene Statuszeile in Claude Code. Häng dort an: curl -s -m 1 --data-binary @- http://localhost:7843/claude-limits"
-                    : "Noch nicht verbunden – oben „Neu einrichten“ klicken.")));
+                    : "Die Statuszeile für die Limits fehlt noch – oben „Neu einrichten“ klicken.")));
             lc.Children.Add(Divider());
             lc.Children.Add(ButtonRow(SmallButton("In der Island zeigen", () => host.ShowClaudeLimits())));
             root.Children.Add(Card(lc));

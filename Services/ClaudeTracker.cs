@@ -47,13 +47,23 @@ namespace DynamicIsland
             try { j = JsonNode.Parse(body); } catch { return; }
             var rl = j?["rate_limits"];
             if (rl == null) return;
+            static double? Num(JsonNode n)
+            {
+                if (n == null) return null;
+                try { return n.GetValue<double>(); } catch { }
+                try { return n.GetValue<long>(); } catch { }
+                return double.TryParse(n.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : (double?)null;
+            }
             static (double?, DateTime) Win(JsonNode w)
             {
                 if (w == null) return (null, default);
-                double? p = null;
-                try { p = w["used_percentage"]?.GetValue<double>(); } catch { }
+                double? p = Num(w["used_percentage"]);
                 DateTime r = default;
-                try { long s = w["resets_at"]?.GetValue<long>() ?? 0; if (s > 0) r = DateTimeOffset.FromUnixTimeSeconds(s).LocalDateTime; } catch { }
+                var ra = w["resets_at"];
+                double? sec = Num(ra);
+                if (sec > 0) r = DateTimeOffset.FromUnixTimeMilliseconds((long)(sec.Value > 1e11 ? sec.Value : sec.Value * 1000)).LocalDateTime;   // Sekunden (oder ms)
+                else if (ra != null && DateTimeOffset.TryParse(ra.ToString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var dto)) r = dto.LocalDateTime;
+                if (p != null) p = Math.Max(0, Math.Min(100, p.Value));
                 return (p, r);
             }
             (FivePct, FiveReset) = Win(rl["five_hour"]);
@@ -149,15 +159,21 @@ namespace DynamicIsland
                     break;
 
                 case "PreToolUse":
+                {
                     // Die Hooks laufen im Hintergrund und können sich überholen: ein verspätetes „Werkzeug startet“
-                    // nach „Fertig“ ließe den Kreis sonst ewig als „arbeitet“ hängen. Neue Arbeit beginnt immer mit einer Nachricht.
-                    if (act != null && act.State == ClaudeState.Done) break;
+                    // direkt nach „Fertig“ ignorieren (sonst hinge der Kreis als „arbeitet“). Kommt es später, arbeitet
+                    // Claude ohne neue Nachricht weiter (z. B. Fortsetzung in der Claude-App) → neue Aufgabe.
+                    if (act != null && act.State == ClaudeState.Done && act.SinceDone.TotalSeconds < 4) break;
+                    bool fresh = act == null || act.State == ClaudeState.Done;
                     act = Ensure(sid, cwd, act);
                     if (transcript != "") act.Transcript = transcript;
+                    // Beginn der Aufgabe = Zeit deiner letzten Nachricht im Verlauf (nicht „jetzt“ – z. B. nach Neustart der Island)
+                    if (fresh) act.AdoptStart(LastPromptTime(act.Transcript));
                     bool wasIdle = act.State != ClaudeState.Working;
                     act.ToolStarted(Describe(Str(j, "tool_name"), j["tool_input"]));
                     if (wasIdle) host.Relayout();
                     break;
+                }
 
                 case "PostToolUse":
                 case "PostToolUseFailure":
@@ -194,6 +210,39 @@ namespace DynamicIsland
                     if (act != null) { act.Finished = true; sessions.Remove(sid); host.Relayout(); }
                     break;
             }
+        }
+
+        /// <summary>Zeit der letzten echten Nachricht im Gesprächsverlauf (Zeitstempel sind UTC → Ortszeit). null = unbekannt.</summary>
+        public static DateTime? LastPromptTime(string transcript)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(transcript) || !File.Exists(transcript)) return null;
+                using var fs = new FileStream(transcript, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                long n = Math.Min(fs.Length, 400_000);
+                fs.Seek(-n, SeekOrigin.End);
+                var buf = new byte[n];
+                int read = fs.Read(buf, 0, (int)n);
+                var lines = System.Text.Encoding.UTF8.GetString(buf, 0, read).Split((char)10);
+                for (int i = lines.Length - 1; i >= 0; i--)
+                {
+                    var l = lines[i];
+                    if (!l.Contains("\"type\":\"user\"") || l.Contains("\"tool_result\"") || l.Contains("\"isMeta\":true") || l.Contains("\"isSidechain\":true")) continue;
+                    int k = l.IndexOf("\"timestamp\":\"", StringComparison.Ordinal);
+                    if (k < 0) continue;
+                    int e = l.IndexOf((char)34, k + 13);
+                    if (e < 0) continue;
+                    if (DateTimeOffset.TryParse(l.Substring(k + 13, e - k - 13), System.Globalization.CultureInfo.InvariantCulture,
+                                                System.Globalization.DateTimeStyles.AssumeUniversal, out var t))
+                    {
+                        var local = t.LocalDateTime;
+                        // nur plausible Werte (nicht in der Zukunft, nicht älter als 12 Stunden)
+                        return local <= DateTime.Now.AddSeconds(5) && local > DateTime.Now.AddHours(-12) ? local : (DateTime?)null;
+                    }
+                }
+            }
+            catch { }
+            return null;
         }
 
         /// <summary>Alle Claude-Kreise entfernen (z. B. wenn „Claude in der Island zeigen“ ausgeschaltet wird).</summary>
@@ -546,6 +595,18 @@ namespace DynamicIsland
             Tick();
         }
 
+        public TimeSpan SinceDone => State == ClaudeState.Done ? DateTime.Now - doneAt : TimeSpan.MaxValue;
+        DateTime doneAt;
+
+        /// <summary>Aufgabe hat schon früher begonnen (Zeit aus dem Verlauf) – nur, wenn sie nach dem letzten „Fertig“ liegt.</summary>
+        public void AdoptStart(DateTime? t)
+        {
+            if (t == null) return;
+            if (State == ClaudeState.Done && t.Value < doneAt) return;   // alte Nachricht, gehört zur vorigen Aufgabe
+            taskStart = t.Value;
+            if (State == ClaudeState.Done) { State = ClaudeState.Working; steps = 0; }
+        }
+
         public void ToolStarted(string what)
         {
             Live();
@@ -577,6 +638,7 @@ namespace DynamicIsland
         {
             lastEvent = DateTime.Now;
             doneAfter = DateTime.Now - taskStart;
+            doneAt = DateTime.Now;
             State = ClaudeState.Done;
             action = "Fertig";
             // Kreis mit ✓ nur kurz zeigen: die Meldung dauert 4,5 s, danach steht er noch ~1,5 s und verschwindet
