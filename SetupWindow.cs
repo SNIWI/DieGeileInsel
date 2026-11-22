@@ -47,6 +47,7 @@ namespace DynamicIsland
             new Page { Group = "Hinweise & Effekte", Key = "alerts",   Title = "Hinweise",     Glyph = "", Tint = Ui.Red,    Subtitle = "Design, was oben kurz angezeigt wird und in welcher Reihenfolge" },
             new Page { Group = "Hinweise & Effekte", Key = "anim",     Title = "Animationen",  Glyph = "", Tint = Ui.Orange, Subtitle = "Licht-Effekt und was pro Ereignis passiert" },
             new Page { Group = "Persönlich",        Key = "cats",      Title = "Katzen",       Glyph = "\U0001F431", Emoji = true, Subtitle = "Deine Begleiter neben der Island" },
+            new Page { Group = "Persönlich",        Key = "obsidian",  Title = "Obsidian",     Glyph = "", Tint = Obsidian.Purple, Subtitle = "Texte, Links und Dateien auf die Island ziehen – landen in deiner Notiz" },
             new Page { Group = "Persönlich",        Key = "shortcuts", Title = "Kurzbefehle",  Glyph = "", Tint = Ui.Purple, Subtitle = "Programme, Ordner und Webseiten mit einem Klick" },
             new Page { Group = "Medien & Geräte",   Key = "spotify",   Title = "Spotify",      Glyph = "\uE8D6", Tint = SpotifyActivity.Green, Subtitle = "Eingebauter Player mit deinem Spotify-Konto" },
             new Page { Group = "Medien & Geräte",   Key = "discord",   Title = "Discord",      Glyph = "", Tint = DiscordVoiceActivity.Blurple, Subtitle = "Nachrichten und Sprach-Overlay" },
@@ -108,10 +109,22 @@ namespace DynamicIsland
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var side = new Border
+            // Seitenleiste: oben die Suche, darunter die Seiten (bzw. die Treffer)
+            var sideGrid = new Grid();
+            sideGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            sideGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            var searchBar = BuildSearchBox();
+            var navScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = nav };
+            Grid.SetRow(navScroll, 1);
+            sideGrid.Children.Add(searchBar);
+            sideGrid.Children.Add(navScroll);
+            nav.Margin = new Thickness(10, 6, 10, 16);
+            var side = new Border { Background = SideBrush, Child = sideGrid };
+            // Strg+F = suchen, Esc = Suche leeren
+            PreviewKeyDown += (o, e) =>
             {
-                Background = SideBrush,
-                Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = nav }
+                if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control) { searchBox.Focus(); searchBox.SelectAll(); e.Handled = true; }
+                else if (e.Key == Key.Escape && searchBox.Text.Length > 0) { searchBox.Text = ""; e.Handled = true; }
             };
             Grid.SetColumn(content, 1);
             grid.Children.Add(side);
@@ -147,7 +160,15 @@ namespace DynamicIsland
             spotifyIdBox = null;
             clientIdBox = null;
             secretBox = null;
-            switch (page)
+            FillPage(page, root);
+            content.Content = root;
+            if (same) Dispatcher.BeginInvoke(new Action(() => content.ScrollToVerticalOffset(offset)), DispatcherPriority.Loaded);
+            else content.ScrollToTop();
+        }
+
+        void FillPage(string key, StackPanel root)
+        {
+            switch (key)
             {
                 case "general": BuildGeneral(root); break;
                 case "anim": BuildAnim(root); break;
@@ -165,15 +186,204 @@ namespace DynamicIsland
                 case "weather": BuildWeather(root); break;
                 case "calendar": BuildCalendar(root); break;
                 case "todo": BuildTodo(root); break;
+                case "obsidian": BuildObsidian(root); break;
             }
-            content.Content = root;
-            if (same) Dispatcher.BeginInvoke(new Action(() => content.ScrollToVerticalOffset(offset)), DispatcherPriority.Loaded);
-            else content.ScrollToTop();
+        }
+
+        // =================================================================
+        //  Suche (oben in der Seitenleiste)
+        // =================================================================
+        TextBox searchBox;
+
+        /// <summary>Suche von außen setzen (z. B. lokale API /settings?q=…).</summary>
+        public void Search(string q) { searchBox.Text = q ?? ""; searchBox.Focus(); searchBox.CaretIndex = searchBox.Text.Length; }
+        Dictionary<string, List<string>> searchIndex;
+
+        FrameworkElement BuildSearchBox()
+        {
+            searchBox = Field("", 13, false);
+            searchBox.Margin = new Thickness(6, 0, 0, 0);
+            var hint = Ui.Text("Suchen", 13, Secondary, false);
+            hint.IsHitTestVisible = false;
+            hint.Margin = new Thickness(8, 0, 0, 0);
+            hint.VerticalAlignment = VerticalAlignment.Center;
+            var clear = Ui.Glyph("", 10, Secondary);
+            clear.Cursor = Cursors.Hand;
+            clear.Visibility = Visibility.Collapsed;
+            clear.Margin = new Thickness(4, 0, 2, 0);
+            clear.MouseLeftButtonUp += (o, e) => { searchBox.Text = ""; searchBox.Focus(); };
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var icon = Ui.Glyph("", 12, Secondary);
+            Grid.SetColumn(searchBox, 1); Grid.SetColumn(hint, 1); Grid.SetColumn(clear, 2);
+            g.Children.Add(icon); g.Children.Add(hint); g.Children.Add(searchBox); g.Children.Add(clear);
+            searchBox.TextChanged += (o, e) =>
+            {
+                bool empty = searchBox.Text.Length == 0;
+                hint.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+                clear.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+                BuildNav();
+            };
+            searchBox.KeyDown += (o, e) =>
+            {
+                if (e.Key != Key.Enter) return;
+                var first = SearchResults(searchBox.Text.Trim()).FirstOrDefault();
+                if (first.page != null) OpenResult(first.page.Key, first.hits.FirstOrDefault());
+                e.Handled = true;
+            };
+            return new Border
+            {
+                Margin = new Thickness(12, 14, 12, 6), Height = 30, CornerRadius = new CornerRadius(8),
+                Background = FieldBrush, Padding = new Thickness(9, 0, 6, 0), Child = g
+            };
+        }
+
+        static string Norm(string t) => (t ?? "").ToLowerInvariant().Replace("ä", "ae").Replace("ö", "oe").Replace("ü", "ue").Replace("ß", "ss");
+
+        /// <summary>Texte aller Seiten einmal sammeln (Seiten werden dafür unsichtbar aufgebaut).</summary>
+        void EnsureIndex()
+        {
+            if (searchIndex != null) return;
+            searchIndex = new Dictionary<string, List<string>>();
+            foreach (var p in VisiblePages)
+            {
+                var texts = new List<string>();
+                try
+                {
+                    var tmp = new StackPanel();
+                    FillPage(p.Key, tmp);
+                    Collect(tmp, texts);
+                }
+                catch (Exception ex) { Program.Log(ex); }
+                searchIndex[p.Key] = texts.Distinct().ToList();
+            }
+            // die unsichtbar aufgebauten Seiten haben Verweise (Listen, Statusfelder) überschrieben → aktuelle Seite neu
+            var keep = page;
+            page = null;
+            ShowPage(keep);
+        }
+
+        static void Collect(DependencyObject d, List<string> into)
+        {
+            if (d is TextBlock tb && !string.IsNullOrWhiteSpace(tb.Text)) into.Add(tb.Text.Trim());
+            foreach (var c in LogicalTreeHelper.GetChildren(d))
+                if (c is DependencyObject dc) Collect(dc, into);
+        }
+
+        List<(Page page, List<string> hits)> SearchResults(string q)
+        {
+            var res = new List<(Page, List<string>)>();
+            if (q.Length == 0) return res;
+            EnsureIndex();
+            var words = Norm(q).Split(new[] { (char)32 }, StringSplitOptions.RemoveEmptyEntries);
+            bool All(string t) { var n = Norm(t); return words.All(n.Contains); }
+            foreach (var p in VisiblePages)
+            {
+                bool head = All(p.Title + " " + p.Subtitle + " " + p.Group);
+                var hits = (searchIndex.TryGetValue(p.Key, out var l) ? l : new List<string>())
+                    .Where(All).OrderBy(t => t.Length).Take(3).ToList();
+                if (head || hits.Count > 0) res.Add((p, hits));
+            }
+            // Treffer im Seitennamen zuerst
+            return res.OrderByDescending(r => Norm(r.Item1.Title).Contains(words[0])).ToList();
+        }
+
+        static string Snippet(string text, string q)
+        {
+            text = text.Replace("\n", " ");
+            if (text.Length <= 60) return text;
+            int i = Norm(text).IndexOf(Norm(q).Split((char)32)[0], StringComparison.Ordinal);
+            int start = Math.Max(0, Math.Min(text.Length - 60, i - 20));
+            if (start > 0) { int sp = text.IndexOf((char)32, start); if (sp >= 0 && sp < i) start = sp + 1; }   // am Wortanfang beginnen
+            return (start > 0 ? "…" : "") + text.Substring(start, Math.Min(60, text.Length - start)).Trim() + (start + 60 < text.Length ? "…" : "");
+        }
+
+        /// <summary>Seite öffnen und die Fundstelle kurz hervorheben.</summary>
+        void OpenResult(string key, string hit)
+        {
+            ShowPage(key);
+            if (string.IsNullOrEmpty(hit)) return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var t = FindText(content.Content as DependencyObject, hit);
+                if (t == null) return;
+                t.BringIntoView();
+                var b = new SolidColorBrush(Color.FromArgb(0, 0x0A, 0x84, 0xFF));
+                t.Background = b;
+                var a = new ColorAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(1800) };
+                a.KeyFrames.Add(new LinearColorKeyFrame(Color.FromArgb(120, 0x0A, 0x84, 0xFF), KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(200))));
+                a.KeyFrames.Add(new LinearColorKeyFrame(Color.FromArgb(120, 0x0A, 0x84, 0xFF), KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1100))));
+                a.KeyFrames.Add(new LinearColorKeyFrame(Color.FromArgb(0, 0x0A, 0x84, 0xFF), KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1800))));
+                b.BeginAnimation(SolidColorBrush.ColorProperty, a);
+            }), DispatcherPriority.Loaded);
+        }
+
+        static TextBlock FindText(DependencyObject d, string text)
+        {
+            if (d == null) return null;
+            if (d is TextBlock tb && tb.Text.Trim() == text) return tb;
+            foreach (var c in LogicalTreeHelper.GetChildren(d))
+                if (c is DependencyObject dc) { var r = FindText(dc, text); if (r != null) return r; }
+            return null;
+        }
+
+        void BuildSearchResults(string q)
+        {
+            EnsureIndex();          // baut beim ersten Mal die Seite neu (und damit auch diese Liste) → danach sauber neu füllen
+            nav.Children.Clear();
+            var res = SearchResults(q);
+            if (res.Count == 0)
+            {
+                var none = Ui.Text("Nichts gefunden", 12.5, Secondary, false);
+                none.Margin = new Thickness(10, 8, 0, 0);
+                nav.Children.Add(none);
+                return;
+            }
+            foreach (var (p, hits) in res)
+            {
+                var pg = p;
+                var icon = new Border
+                {
+                    Width = 24, Height = 24, CornerRadius = new CornerRadius(6),
+                    Background = p.Emoji ? Brushes.Transparent : Ui.Br(p.Tint),
+                    Child = p.Emoji ? Ui.Glyph(p.Glyph, 16, Ui.White, Ui.EmojiFont) : Ui.Glyph(p.Glyph, 13, Ui.White)
+                };
+                var lines = new StackPanel();
+                lines.Children.Add(Ui.Text(p.Title, 13.5, Ui.White, true));
+                foreach (var h in hits)
+                {
+                    var t = Ui.Text(Snippet(h, q), 11.5, Secondary, false);
+                    t.TextTrimming = TextTrimming.CharacterEllipsis;
+                    lines.Children.Add(t);
+                }
+                lines.VerticalAlignment = VerticalAlignment.Center;
+                var g = new Grid();
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                icon.VerticalAlignment = VerticalAlignment.Top;
+                icon.Margin = new Thickness(0, 2, 10, 0);
+                Grid.SetColumn(lines, 1);
+                g.Children.Add(icon); g.Children.Add(lines);
+                var row = new Border
+                {
+                    CornerRadius = new CornerRadius(8), Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(0, 0, 0, 2),
+                    Cursor = Cursors.Hand, Background = p.Key == page ? Ui.Br(Colors.White, 14) : Brushes.Transparent, Child = g
+                };
+                var bg = row.Background;
+                row.MouseEnter += (o, e) => row.Background = Ui.Br(Colors.White, 20);
+                row.MouseLeave += (o, e) => row.Background = bg;
+                row.MouseLeftButtonUp += (o, e) => OpenResult(pg.Key, hits.FirstOrDefault());
+                nav.Children.Add(row);
+            }
         }
 
         void BuildNav()
         {
             nav.Children.Clear();
+            string q = searchBox?.Text.Trim() ?? "";
+            if (q.Length > 0) { BuildSearchResults(q); return; }
             string group = null;
             foreach (var p in VisiblePages)
             {
@@ -494,6 +704,13 @@ namespace DynamicIsland
             Row("Zwischenablage-Verlauf merken (Strg + Alt + V)", s.ClipHistory, v => { s.ClipHistory = v; if (!v) host.ClearClipHistory(); });
             Row("Feststelltaste", s.ShowCapsLock, v => s.ShowCapsLock = v);
             Row("Geräte verbinden (Kopfhörer, Controller, Festplatten) mit Akku", s.ShowBluetooth, v => s.ShowBluetooth = v);
+            Row("Logitech-Maus und -Tastatur: nur bei wenig Akku melden", s.LogitechEnabled, v => { s.LogitechEnabled = v; Later(() => ShowPage("alerts")); });
+            if (s.LogitechEnabled)
+            {
+                var warnSteps = new[] { 10, 15, 20, 30 };
+                a.Children.Add(Divider());
+                a.Children.Add(SegmentRow("Melden unter", warnSteps.Select(x => x + " %").ToArray(), Math.Max(0, Array.IndexOf(warnSteps, s.LogitechWarnAt)), i => { s.LogitechWarnAt = warnSteps[i]; Apply(); }));
+            }
             Row("Kamera- und Mikrofon-Punkte", s.ShowPrivacy, v => s.ShowPrivacy = v);
             Row("Laufende Downloads", s.ShowDownloads, v =>
             {
@@ -795,6 +1012,19 @@ namespace DynamicIsland
                                      "Die Pille zeigt, was Claude gerade tut (z. B. „Bearbeitet Cats.cs“) und wie lange die Aufgabe schon läuft. " +
                                      "Antippen zeigt Details: Dauer des aktuellen Schritts, Anzahl der Aktionen und deine Nachricht. " +
                                      "Gelb = Claude wartet auf dich, grün = fertig."));
+            root.Children.Add(Header("Nutzungs-Limits"));
+            var lc = new StackPanel();
+            lc.Children.Add(ToggleRow("Warnen bei 80 % und 95 %", s.ClaudeLimitWarn, v => { s.ClaudeLimitWarn = v; Apply(); }, out _));
+            lc.Children.Add(Divider());
+            lc.Children.Add(StatusText(ClaudeTracker.LimitsLine()
+                ?? (ClaudeTracker.LimitsInstalled() ? "Noch keine Werte – kommen mit der nächsten Antwort von Claude."
+                    : ClaudeTracker.ForeignStatusLine() ? "Du hast schon eine eigene Statuszeile in Claude Code. Häng dort an: curl -s -m 1 --data-binary @- http://localhost:7843/claude-limits"
+                    : "Noch nicht verbunden – oben „Neu einrichten“ klicken.")));
+            lc.Children.Add(Divider());
+            lc.Children.Add(ButtonRow(SmallButton("In der Island zeigen", () => host.ShowClaudeLimits())));
+            root.Children.Add(Card(lc));
+            root.Children.Add(Footer("Die Limits (5 Stunden und Woche, nur mit Pro/Max-Abo) schickt Claude Code über seine Statuszeile – „Verbinden“ trägt sie mit ein, falls du noch keine eigene hast. " +
+                                     "Sie stehen auch in den Details der Claude-Pille und auf der Kachel „Claude-Limits“. Mit der Kachel „Claude diktieren“ sprichst du deine Nachricht an Claude (Windows-Spracheingabe, Win+H)."));
         }
 
         // =================================================================
@@ -818,9 +1048,25 @@ namespace DynamicIsland
             act.Children.Add(ToggleRow("Im Schlaf zusammenrollen", s.CatsCurl, v => { s.CatsCurl = v; Changed(); }, out _));
             act.Children.Add(Divider());
             act.Children.Add(ToggleRow("Herumlaufen", s.CatsWalk, v => { s.CatsWalk = v; Changed(); }, out _));
+            act.Children.Add(Divider());
+            var moodNow = Ui.Text("", 12, Ui.Dim, false);
+            void ShowMoodNow()
+            {
+                var now = DateTime.Now;
+                var (_, why) = CatView.WeatherEnergy();
+                string m = CatView.MoodFor("calm", now);
+                moodNow.Text = s.CatsMoodAuto
+                    ? "Gerade: " + CatView.TimeName(now) + (why != null ? ", " + why : "") + " → " + (m == "playful" ? "eher verspielt" : m == "sleepy" ? "eher verschlafen" : "ruhig")
+                    : "Aus – jede Katze bleibt bei ihrem Charakter";
+            }
+            act.Children.Add(ToggleRow("Laune nach Tageszeit und Wetter", s.CatsMoodAuto, v => { s.CatsMoodAuto = v; Changed(); ShowMoodNow(); }, out _));
+            ShowMoodNow();
+            moodNow.Margin = new Thickness(16, 0, 16, 10);
+            act.Children.Add(moodNow);
             root.Children.Add(Card(act));
             root.Children.Add(Footer("Eingerollt schlafen sie mit dem Schwanz um den Körper und strecken sich beim Aufwachen. " +
-                                     "Beim Herumlaufen trippeln sie ab und zu hin und her (neben der Island oder unten am Kratzbaum) und wechseln am Kratzbaum die Plätze – verspielte öfter, verschlafene seltener."));
+                                     "Beim Herumlaufen trippeln sie ab und zu hin und her (neben der Island oder unten am Kratzbaum) und wechseln am Kratzbaum die Plätze – verspielte öfter, verschlafene seltener. " +
+                                     "Mit Laune nach Tageszeit und Wetter sind sie nachts und mittags verschlafen, nachmittags und bei Sonne verspielt, bei Regen, Gewitter oder Hitze eher müde."));
 
             root.Children.Add(Header("Deine Katzen"));
             catList = new StackPanel();
@@ -1292,6 +1538,67 @@ namespace DynamicIsland
             }));
         }
 
+        void BuildObsidian(StackPanel root)
+        {
+            var vaults = Obsidian.FindVaults();
+            root.Children.Add(Header("Ablegen in Obsidian"));
+            var c = new StackPanel();
+            c.Children.Add(ToggleRow("Auf die Island ziehen = in Obsidian speichern", s.ObsidianEnabled, v => { s.ObsidianEnabled = v; Apply(); }, out _));
+            c.Children.Add(Divider());
+            // Vault: aus Obsidians Liste oder selbst gewählt
+            var names = new System.Collections.Generic.List<string> { "Zuletzt geöffneter" };
+            names.AddRange(vaults.Select(v => v.Name));
+            bool custom = !string.IsNullOrWhiteSpace(s.ObsidianVault) && !vaults.Any(v => string.Equals(v.Path, s.ObsidianVault, StringComparison.OrdinalIgnoreCase));
+            if (custom) names.Add(System.IO.Path.GetFileName(s.ObsidianVault.TrimEnd('\\', '/')));
+            int sel = string.IsNullOrWhiteSpace(s.ObsidianVault) ? 0
+                : custom ? names.Count - 1
+                : 1 + vaults.FindIndex(v => string.Equals(v.Path, s.ObsidianVault, StringComparison.OrdinalIgnoreCase));
+            c.Children.Add(ChipRow("Vault", names.ToArray(), sel, i =>
+            {
+                s.ObsidianVault = i == 0 ? "" : i - 1 < vaults.Count ? vaults[i - 1].Path : s.ObsidianVault;
+                Apply();
+                Later(() => ShowPage("obsidian"));
+            }));
+            c.Children.Add(Divider());
+            var tgt = new[] { "folder", "daily", "note" };
+            c.Children.Add(SegmentRow("Ziel", new[] { "Inbox-Ordner", "Tagesnotiz", "Feste Notiz" }, Math.Max(0, Array.IndexOf(tgt, s.ObsidianTarget)),
+                i => { s.ObsidianTarget = tgt[i]; Apply(); Later(() => ShowPage("obsidian")); }));
+            if (s.ObsidianTarget == "folder")
+            {
+                c.Children.Add(Divider());
+                string vpf = Obsidian.VaultPath(s);
+                var fb = Field(string.IsNullOrWhiteSpace(s.ObsidianFolder) && vpf != null ? Obsidian.InboxFolder(s, vpf) : s.ObsidianFolder ?? "", 14, false);
+                fb.TextChanged += (o, e) => { s.ObsidianFolder = fb.Text.Trim(); s.Save(); };
+                c.Children.Add(PlainField("Ordner (Text wird je eine neue Notiz, Dateien landen direkt hier)", fb));
+            }
+            if (s.ObsidianTarget == "note")
+            {
+                c.Children.Add(Divider());
+                var nb = Field(s.ObsidianNote ?? "Eingang", 14, false);
+                nb.TextChanged += (o, e) => { s.ObsidianNote = nb.Text.Trim(); s.Save(); };
+                c.Children.Add(PlainField("Notiz (z. B. Eingang oder Ordner/Ideen)", nb));
+            }
+            c.Children.Add(Divider());
+            c.Children.Add(ToggleRow("Uhrzeit vor jeden Eintrag", s.ObsidianTime, v => { s.ObsidianTime = v; Apply(); }, out _));
+            c.Children.Add(Divider());
+            string vp = Obsidian.VaultPath(s);
+            c.Children.Add(StatusText(vp == null
+                ? "Kein Vault gefunden – Obsidian einmal öffnen oder unten einen Ordner wählen."
+                : "Landet in: " + System.IO.Path.GetFileName(vp.TrimEnd('\\', '/')) + " / " + Obsidian.NoteRelPath(s, vp)));
+            c.Children.Add(Divider());
+            c.Children.Add(ButtonRow(
+                SmallButton("Ordner wählen …", () =>
+                {
+                    var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Obsidian-Vault wählen" };
+                    if (dlg.ShowDialog(this) == true) { s.ObsidianVault = dlg.FolderName; Apply(); Later(() => ShowPage("obsidian")); }
+                }),
+                SmallButton("Notiz öffnen", () => Obsidian.OpenNote(s))));
+            root.Children.Add(Card(c));
+            root.Children.Add(Footer("Zieh markierten Text, einen Link, ein Bild oder eine Datei auf die Island. Text und Links werden als Punkt an die Notiz angehängt, " +
+                                     "Dateien in den Anhang-Ordner deines Vaults kopiert und verlinkt (Bilder, PDFs und Audio direkt eingebettet). " +
+                                     "Ist die KI-Drop-Zone an, erscheint dort zusätzlich die Karte „In Obsidian“. Die Tagesnotiz nutzt Ordner und Datumsformat aus Obsidian."));
+        }
+
         void BuildTodo(StackPanel root)
         {
             var todo = host.Todo;
@@ -1469,9 +1776,19 @@ namespace DynamicIsland
 
         void BuildAi(StackPanel root)
         {
-            root.Children.Add(Header("Gemini"));
+            var prov = host.Gemini.Current;
+            root.Children.Add(Header("Anbieter"));
             var g = new StackPanel();
             g.Children.Add(ToggleRow("KI-Funktionen in der Island", s.AiEnabled, v => { s.AiEnabled = v; Apply(); }, out _));
+            g.Children.Add(Divider());
+            var provs = GeminiService.Providers;
+            g.Children.Add(ChipRow("KI", provs.Select(p => p.Name).ToArray(), Math.Max(0, Array.IndexOf(provs, prov)), i =>
+            {
+                s.AiProvider = provs[i].Key;
+                host.Gemini.History.Clear();   // neuer Anbieter → neuer Chat
+                Apply();
+                Later(() => ShowPage("ai"));
+            }));
             g.Children.Add(Divider());
             var key = new PasswordBox
             {
@@ -1485,7 +1802,7 @@ namespace DynamicIsland
                 VerticalAlignment = VerticalAlignment.Center
             };
             key.PasswordChanged += (o, e) => { host.Gemini.Key = key.Password; s.Save(); };
-            g.Children.Add(PlainField("API-Schlüssel", key));
+            g.Children.Add(PlainField(prov.Name + "-API-Schlüssel", key));
             g.Children.Add(Divider());
             var status = StatusText(host.Gemini.HasKey ? "Schlüssel gespeichert (verschlüsselt)." : "Noch kein Schlüssel eingetragen.");
             g.Children.Add(status);
@@ -1498,17 +1815,29 @@ namespace DynamicIsland
                     status.Text = "Teste …";
                     status.Text = await host.Gemini.TestAsync();
                 }),
-                SmallButton("Schlüssel holen", () => IslandWindow.Open("https://aistudio.google.com/apikey")),
+                SmallButton("Schlüssel holen", () => IslandWindow.Open(prov.KeyPage)),
                 SmallButton("Entfernen", () => { host.Gemini.Key = null; s.Save(); Later(() => ShowPage("ai")); }, true)));
             root.Children.Add(Card(g));
-            root.Children.Add(Footer("Den Schlüssel gibt es kostenlos in Google AI Studio („Create API key“). Er wird mit Windows verschlüsselt " +
-                                     "gespeichert und ist nur in deinem Benutzerkonto lesbar. Deine Fragen und gezogenen Texte gehen zur Beantwortung an Google."));
+            root.Children.Add(Footer((prov.Key == "gemini"
+                                         ? "Den Gemini-Schlüssel gibt es kostenlos in Google AI Studio („Create API key“). "
+                                         : "Den Schlüssel bekommst du unter „Schlüssel holen“ – " + prov.Name + " rechnet die Nutzung über dein Konto dort ab (meist Guthaben nötig). ") +
+                                     "Jeder Schlüssel wird mit Windows verschlüsselt gespeichert und ist nur in deinem Benutzerkonto lesbar. " +
+                                     "Deine Fragen und gezogenen Texte gehen zur Beantwortung an " + prov.Name + ". Du kannst mehrere Schlüssel hinterlegen und oben umschalten."));
 
             root.Children.Add(Header("Antworten"));
             var a = new StackPanel();
-            int mi = Array.IndexOf(AiModels, s.GeminiModel);
-            a.Children.Add(ChipRow("Modell", new[] { "Schnell (3.5 Flash-Lite)", "Klüger (3.6 Flash)" }, mi < 0 ? 0 : mi,
-                i => { s.GeminiModel = AiModels[i]; Apply(); }));
+            if (prov.Key == "gemini")
+            {
+                int mi = Array.IndexOf(AiModels, s.GeminiModel);
+                a.Children.Add(ChipRow("Modell", new[] { "Schnell (3.5 Flash-Lite)", "Klüger (3.6 Flash)" }, mi < 0 ? 0 : mi,
+                    i => { s.GeminiModel = AiModels[i]; Apply(); }));
+            }
+            else
+            {
+                var mb = Field(host.Gemini.Model, 14, false);
+                mb.TextChanged += (o, e) => { host.Gemini.Model = mb.Text; s.Save(); };
+                a.Children.Add(PlainField("Modell (leer = " + prov.Model + ")", mb));
+            }
             a.Children.Add(Divider());
             int li = Array.IndexOf(AiLanguages, s.AiTranslateTo);
             a.Children.Add(ChipRow("Übersetzen nach", AiLanguages, li < 0 ? 0 : li,

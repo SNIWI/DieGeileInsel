@@ -202,6 +202,10 @@ namespace DynamicIsland
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetMonitorInfoW")] static extern bool GetMonitorInfoEx(IntPtr mon, ref MONITORINFOEX mi);
         [DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc cb, IntPtr data);
 
+        [DllImport("user32.dll")] static extern uint GetDpiForSystem();
+        /// <summary>DPI des Systems (ändert sich für dieses Programm nicht, solange es läuft).</summary>
+        public static uint SystemDpi { get { try { return GetDpiForSystem(); } catch { return 96; } } }
+
         public sealed class Monitor { public string Name; public RECT Bounds; public bool Primary; }
 
         static Monitor Info(IntPtr h)

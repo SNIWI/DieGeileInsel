@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Data;
 using System.Globalization;
 using System.Linq;
@@ -48,7 +48,7 @@ namespace DynamicIsland
         Mode beforeDrop = Mode.Home;
 
         public override FrameworkElement BuildCompact() =>
-            Ui.Row3(Ui.HStack(7, SparkGlyph(14), Ui.Text(mode == Mode.Busy ? busyLabel : "Gemini", 13, Ui.White)), null, null, new Thickness(13, 0, 15, 0));
+            Ui.Row3(Ui.HStack(7, SparkGlyph(14), Ui.Text(mode == Mode.Busy ? busyLabel : host.Gemini.Name, 13, Ui.White)), null, null, new Thickness(13, 0, 15, 0));
 
         public override FrameworkElement BuildMinimal() => SparkGlyph(14);
 
@@ -81,7 +81,7 @@ namespace DynamicIsland
                 case Mode.Drop: head = Head("Loslassen zum …", null); body = DropBody(); break;
                 case Mode.Busy: head = Head(busyLabel, Ui.Link("Abbrechen", Cancel, 12.5)); body = BusyBody(); break;
                 case Mode.Result: head = Head(resultTitle, ResultButtons()); body = ResultBody(); break;
-                default: head = Head("Gemini", HomeButtons()); body = HomeBody(); break;
+                default: head = Head(host.Gemini.Name, HomeButtons()); body = HomeBody(); break;
             }
             Grid.SetRow(body, 1);
             root.Children.Add(head);
@@ -158,7 +158,7 @@ namespace DynamicIsland
             bool noKey = !host.Gemini.HasKey;
             if (noKey)
             {
-                var row = Ui.HStack(6, Ui.Text("Gemini-Schlüssel fehlt.", 12.5, Ui.Dim, false),
+                var row = Ui.HStack(6, Ui.Text(host.Gemini.Name + "-Schlüssel fehlt.", 12.5, Ui.Dim, false),
                                        Ui.Link("Jetzt einrichten", () => host.OpenSetup("ai"), 12.5));
                 row.Margin = new Thickness(2, 0, 0, 8);
                 sp.Children.Add(row);
@@ -327,11 +327,13 @@ namespace DynamicIsland
         // ---------- Drop-Zone ----------
         FrameworkElement DropBody()
         {
-            var grid = new UniformGrid { Columns = 2, Rows = 2, Margin = new Thickness(-3, 8, -3, 0) };
+            bool obs = host.Settings.ObsidianEnabled;
+            var grid = new UniformGrid { Columns = 2, Rows = obs ? 3 : 2, Margin = new Thickness(-3, 8, -3, 0) };
             grid.Children.Add(DropCard("", "Zusammenfassen", "sum"));
             grid.Children.Add(DropCard("", "Übersetzen", "tr"));
             grid.Children.Add(DropCard("", "Korrigieren", "fix"));
             grid.Children.Add(DropCard("", "Erklären", "explain"));
+            if (obs) grid.Children.Add(DropCard("", "In Obsidian", "obsidian"));   // Text direkt in die Obsidian-Notiz
             return grid;
         }
 
@@ -356,6 +358,7 @@ namespace DynamicIsland
                 e.Handled = true;
                 var t = DroppedText(e.Data);
                 if (string.IsNullOrWhiteSpace(t)) { EndDrop(); return; }
+                if (kind == "obsidian") { EndDrop(); host.Collapse(); host.SaveToObsidian(e.Data); return; }
                 RunTask(kind, t);
             };
             return b;
@@ -410,7 +413,7 @@ namespace DynamicIsland
                 Padding = new Thickness(0),
                 FocusVisualStyle = null
             };
-            string ph = mode == Mode.Result && resultIsText ? "Frage zu diesem Text …" : "Frag Gemini oder rechne, z. B. 23 * 19";
+            string ph = mode == Mode.Result && resultIsText ? "Frage zu diesem Text …" : "Frag " + host.Gemini.Name + " oder rechne, z. B. 23 * 19";
             var placeholder = Ui.Text(ph, 13.5, Ui.Dim, false);
             placeholder.IsHitTestVisible = false;
             placeholder.VerticalAlignment = VerticalAlignment.Center;

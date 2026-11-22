@@ -17,6 +17,24 @@
 
 ## ✨ Highlights
 
+### 🆕 Neu in 1.1
+
+<table>
+<tr>
+<td width="50%"><img src="docs/lichtring.gif" alt="Lichtring"><br><b>Lichtring</b> – läuft einmal komplett um die Island, egal wie groß sie gerade wird.</td>
+<td width="50%"><img src="docs/claude-limits.gif" alt="Claude-Limits"><br><b>Claude-Limits</b> – 5-Stunden- und Wochen-Limit, Warnung bei 80 % und 95 %.</td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/logitech.gif" alt="Logitech-Akku" width="60%"><br><b>Maus & Tastatur</b> – Akku von Logitech-Geräten (Lightspeed, Bolt, Unifying, Bluetooth), ganz ohne G HUB. Meldet sich nur, wenn der Akku knapp wird.</td>
+</tr>
+</table>
+
+- **Obsidian:** Text, Links und Dateien auf die Island ziehen – landen in deiner Inbox (oder Tagesnotiz).
+- **Mehrere KIs:** Gemini, ChatGPT, Grok, Claude, Mistral, DeepSeek, OpenRouter.
+- **Anrufe annehmen** (WhatsApp, Teams, Discord) direkt aus der Island, **App-Logo** bei jeder Mitteilung.
+- **Claude diktieren** per Windows-Spracheingabe, **Katzen-Laune** nach Tageszeit und Wetter, **Suche** in den Einstellungen.
+- Island bleibt nach dem Einschalten der Monitore in der Mitte.
+
 ### 🎵 Player für Spotify und alle anderen Medien
 Großes Cover mit Farb-Leuchten, Spulen, Zufall, Wiederholen. Das Cover schrumpft beim Pausieren, beim Songwechsel gleitet der Titel herein.
 Mit dem **Player-Wechsler** springst du zwischen Spotify, YouTube im Browser, VLC & Co.
@@ -59,7 +77,9 @@ und sitzen in der großen Island auf ihrem Kratzbaum. Ganz oben wird geschlafen.
 | ⬇️ **Downloads** | Browser-Downloads live, fertig → antippen öffnet |
 | 📋 **Zwischenablage** | Verlauf der letzten 25 Einträge (nur im Arbeitsspeicher) |
 | ⏱️ **Timer & Pomodoro** | Countdown in der Pille, Animation wenn fertig |
-| 🤖 **KI** | Gemini-Chat und Texterkennung vom Bildschirm |
+| 🤖 **KI** | Chat mit Gemini, ChatGPT, Grok, Claude | 🤖 **KI** | Gemini-Chat und Texterkennung vom Bildschirm | Co., Texterkennung vom Bildschirm |
+| 🖱️ **Logitech** | Akku von Maus & Tastatur, Warnung wenn er knapp wird |
+| 🟣 **Obsidian** | Auf die Island ziehen → landet in deiner Inbox |
 | 🖥️ **Mehrere Bildschirme** | Frei verschiebbar, auch auf den zweiten Monitor |
 
 ## 🚀 Installation

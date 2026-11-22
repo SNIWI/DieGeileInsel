@@ -80,6 +80,8 @@ namespace DynamicIsland
         public bool Banner;                // größere Pille mit Titel + Untertitel
         public double CompactW = 250;
         public Func<FrameworkElement> RightFactory;
+        /// <summary>Eigenes Symbol statt Glyph (z. B. das Logo der App, von der eine Mitteilung kommt). Bekommt die Größe.</summary>
+        public Func<double, FrameworkElement> IconFactory;
         public readonly List<ActionButton> Buttons = new List<ActionButton>();
         public Action<GenericActivity> Ticker;
         public Func<bool> TapAction;
@@ -133,11 +135,12 @@ namespace DynamicIsland
         FrameworkElement BuildPill()
         {
             cIcon = Ui.Glyph(Glyph, 15, Acc(), GlyphFont);
+            UIElement pillIcon = IconOr(cIcon, 17);
             cLeft = Ui.Text(LeftText, 13, LeftColor.HasValue ? Ui.Br(LeftColor.Value) : Ui.White, true, true);
             // langer Text (z. B. „Führt aus: …“ bei Claude) wird mit … gekürzt, statt die Zeit rechts aus der Pille zu schieben
             cLeft.TextTrimming = TextTrimming.CharacterEllipsis;
             cLeft.MaxWidth = BarInCompact ? CompactWidth * 0.45 : Math.Max(40, CompactWidth - 28 - 22 - 60);
-            var left = Ui.HStack(7, cIcon, cLeft);
+            var left = Ui.HStack(7, pillIcon, cLeft);
             UIElement middle = null;
             if (BarInCompact)
             {
@@ -163,7 +166,7 @@ namespace DynamicIsland
             bCircle = new Border { VerticalAlignment = VerticalAlignment.Center };
             AlertLook.StyleBox(bCircle, Accent, AlertLook.BannerIcon);
             cIcon = Ui.Glyph(Glyph, AlertLook.D == "minimal" ? 16 : Ui.CompactAlerts ? 15 : 19, Acc(), GlyphFont);
-            bCircle.Child = cIcon;
+            bCircle.Child = IconOr(cIcon, AlertLook.BannerIcon * (AlertLook.D == "minimal" ? 0.9 : 0.72));
             bTitle = Ui.Text(Ui.OneLine(Title), Ui.CompactAlerts ? 13.5 : 14.5, AlertLook.TitleBrush(Accent, TitleColor));
             bTitle.TextTrimming = TextTrimming.CharacterEllipsis;
             bSub = Ui.Text(Ui.OneLine(Subtitle), Ui.CompactAlerts ? 11.5 : 12, Ui.Dim, false);
@@ -212,7 +215,7 @@ namespace DynamicIsland
 
             eCircle = new Border { Width = 46, Height = 46, CornerRadius = new CornerRadius(23), Background = Ui.Br(Accent, 55) };
             eIcon = Ui.Glyph(Glyph, 21, Acc(), GlyphFont);
-            eCircle.Child = eIcon;
+            eCircle.Child = IconOr(eIcon, 32);
             eTitle = Ui.Text(Title ?? LeftText, 15.5, Ui.White);
             eSub = Ui.Text(Subtitle, 12.5, Ui.Dim, false);
             var texts = Ui.VStack(2, eTitle, eSub);
@@ -250,7 +253,20 @@ namespace DynamicIsland
         public override FrameworkElement BuildMinimal()
         {
             mIcon = Ui.Glyph(Glyph, 15, Acc(), GlyphFont);
-            return mIcon;
+            return (FrameworkElement)IconOr(mIcon, 17);
+        }
+
+        /// <summary>App-Logo (falls gesetzt), sonst das Glyph.</summary>
+        UIElement IconOr(TextBlock glyph, double size)
+        {
+            if (IconFactory == null) return glyph;
+            try
+            {
+                var el = IconFactory(size);
+                if (el != null) { el.VerticalAlignment = VerticalAlignment.Center; el.HorizontalAlignment = HorizontalAlignment.Center; return el; }
+            }
+            catch (Exception ex) { Program.Log(ex); }
+            return glyph;
         }
 
         StackPanel ButtonsPanel(double size)

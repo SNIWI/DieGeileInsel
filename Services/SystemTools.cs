@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -110,6 +110,19 @@ namespace DynamicIsland
                 keybd_event(vk, 0, 0, UIntPtr.Zero);
                 keybd_event(vk, 0, 2, UIntPtr.Zero);
                 if (ctrl) keybd_event(0x11, 0, 2, UIntPtr.Zero);
+            }
+            catch (Exception ex) { Program.Log(ex); }
+        }
+
+        /// <summary>Windows-Taste + Taste (z. B. Win+H = Spracheingabe).</summary>
+        public static void WinKey(byte vk)
+        {
+            try
+            {
+                keybd_event(0x5B, 0, 0, UIntPtr.Zero);
+                keybd_event(vk, 0, 0, UIntPtr.Zero);
+                keybd_event(vk, 0, 2, UIntPtr.Zero);
+                keybd_event(0x5B, 0, 2, UIntPtr.Zero);
             }
             catch (Exception ex) { Program.Log(ex); }
         }

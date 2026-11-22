@@ -124,19 +124,32 @@ namespace DynamicIsland
             var grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
             if (!loaded) root.Children.Add(Ui.Text("Suche Geräte …", 12.5, Ui.Dim, false));
             else if (devices.Count == 0) root.Children.Add(Ui.Text("Noch keine Geräte gekoppelt", 12.5, Ui.Dim, false));
-            foreach (var d in devices.Take(4))
+            // Logitech-Mäuse/-Tastaturen (Empfänger oder Bluetooth) mit Akku zuerst
+            var logi = host.LogiDevices.ToList();
+            var items = logi.Select(l => (name: l.Name, connected: true, glyph: l.Glyph,
+                                          state: l.Full ? "Voll geladen" : l.Charging ? $"Lädt · {l.Percent} %" : $"Akku {l.Percent} %",
+                                          low: !l.Charging && l.Percent <= 15))
+                .Concat(devices.Where(d => !logi.Any(l => string.Equals(l.Name, d.name, StringComparison.OrdinalIgnoreCase)))
+                    .Select(d =>
+                    {
+                        int? b = d.connected ? host.BtBatteryOf(d.name) : null;
+                        return (name: d.name, connected: d.connected, glyph: DeviceGlyph(d.cls, d.name),
+                                state: d.connected ? (b.HasValue ? $"Verbunden · {b} %" : "Verbunden") : "Nicht verbunden", low: false);
+                    }))
+                .Take(4).ToList();
+            if (loaded && devices.Count == 0 && items.Count > 0) root.Children.RemoveAt(root.Children.Count - 1);   // „Noch keine Geräte“ weg
+            foreach (var d in items)
             {
-                int? bat = d.connected ? host.BtBatteryOf(d.name) : null;
                 var circle = new Border
                 {
                     Width = 30, Height = 30, CornerRadius = new CornerRadius(15),
                     Background = d.connected ? blue : Ui.Br(Colors.White, 30),
-                    Child = Ui.Glyph(DeviceGlyph(d.cls, d.name), 13, Ui.White),
+                    Child = Ui.Glyph(d.glyph, 13, Ui.White),
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 var name = Ui.Text(d.name, 13, Ui.White, d.connected);
                 name.TextTrimming = TextTrimming.CharacterEllipsis;
-                var state = Ui.Text(d.connected ? (bat.HasValue ? $"Verbunden · {bat} %" : "Verbunden") : "Nicht verbunden", 11, d.connected ? Ui.Br(Color.FromRgb(0x64, 0xB5, 0xFF)) : Ui.Dim, false);
+                var state = Ui.Text(d.state, 11, d.low ? Ui.Br(Ui.Red) : d.connected ? Ui.Br(Color.FromRgb(0x64, 0xB5, 0xFF)) : Ui.Dim, false);
                 var nt = Ui.VStack(0, name, state);
                 nt.Margin = new Thickness(9, 0, 4, 0);
                 nt.VerticalAlignment = VerticalAlignment.Center;

@@ -31,6 +31,96 @@ namespace DynamicIsland
 
         public DateTime LastEvent { get; private set; }
 
+        // ---- Nutzungs-Limits (aus der Statuszeile von Claude Code: rate_limits) ----
+        const string LimitsUrl = "http://localhost:7843/claude-limits";
+        /// <summary>Statuszeilen-Befehl: schickt das JSON an die Island und zeigt selbst nichts an.</summary>
+        public const string StatusCommand = "curl -s -m 1 --data-binary @- " + LimitsUrl + " >/dev/null 2>&1; true";
+        public static double? FivePct, WeekPct;
+        public static DateTime FiveReset, WeekReset, LimitsAt;
+        int fiveWarned, weekWarned;          // schon gewarnt bei 80 / 95 %
+        DateTime fiveWarnReset, weekWarnReset;
+
+        public void HandleLimits(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return;
+            JsonNode j;
+            try { j = JsonNode.Parse(body); } catch { return; }
+            var rl = j?["rate_limits"];
+            if (rl == null) return;
+            static (double?, DateTime) Win(JsonNode w)
+            {
+                if (w == null) return (null, default);
+                double? p = null;
+                try { p = w["used_percentage"]?.GetValue<double>(); } catch { }
+                DateTime r = default;
+                try { long s = w["resets_at"]?.GetValue<long>() ?? 0; if (s > 0) r = DateTimeOffset.FromUnixTimeSeconds(s).LocalDateTime; } catch { }
+                return (p, r);
+            }
+            (FivePct, FiveReset) = Win(rl["five_hour"]);
+            (WeekPct, WeekReset) = Win(rl["seven_day"]);
+            LimitsAt = DateTime.Now;
+            if (!host.Settings.ClaudeEnabled || !host.Settings.ClaudeLimitWarn) return;
+            CheckWarn("5-Stunden-Limit", FivePct, FiveReset, ref fiveWarned, ref fiveWarnReset);
+            CheckWarn("Wochen-Limit", WeekPct, WeekReset, ref weekWarned, ref weekWarnReset);
+        }
+
+        void CheckWarn(string name, double? pct, DateTime reset, ref int warned, ref DateTime warnReset)
+        {
+            if (pct == null) return;
+            if (reset != warnReset) { warnReset = reset; warned = 0; }   // neues Fenster → wieder warnen
+            int level = pct >= 95 ? 95 : pct >= 80 ? 80 : 0;
+            if (level <= warned) return;
+            warned = level;
+            double p = pct.Value;
+            string when = reset == default ? "" : " · wieder frei " + ResetText(reset);
+            host.Alert("claude-limit", 8, g =>
+            {
+                g.Banner = true;
+                g.Glyph = "✻";
+                g.GlyphFont = Ui.SymbolFont;
+                g.Accent = level >= 95 ? Ui.Red : Ui.Orange;
+                g.Title = "Claude: " + name + " bei " + Math.Round(p) + " %";
+                g.Subtitle = (level >= 95 ? "Fast aufgebraucht" : "Schon viel genutzt") + when;
+                g.Progress = Math.Min(1, p / 100);
+            });
+        }
+
+        public static string ResetText(DateTime r)
+        {
+            if (r == default) return "";
+            return r.Date == DateTime.Today ? "um " + r.ToString("HH:mm")
+                 : r.Date == DateTime.Today.AddDays(1) ? "morgen " + r.ToString("HH:mm")
+                 : r.ToString("ddd HH:mm", System.Globalization.CultureInfo.GetCultureInfo("de-DE"));
+        }
+
+        /// <summary>Kurze Zeile für die Anzeige, z. B. „Limit: 5 Std 23 % · Woche 41 %“ (null, wenn nichts bekannt).</summary>
+        public static string LimitsLine()
+        {
+            if ((FivePct == null && WeekPct == null) || (DateTime.Now - LimitsAt).TotalHours > 12) return null;
+            var parts = new List<string>();
+            if (FivePct != null) parts.Add("5 Std " + Math.Round(FivePct.Value) + " %" + (FiveReset != default ? " (frei " + ResetText(FiveReset) + ")" : ""));
+            if (WeekPct != null) parts.Add("Woche " + Math.Round(WeekPct.Value) + " %");
+            return "Limit: " + string.Join("  ·  ", parts);
+        }
+
+        public static bool LimitsInstalled()
+        {
+            try { return File.Exists(ClaudeSettingsPath) && File.ReadAllText(ClaudeSettingsPath).Contains(LimitsUrl); }
+            catch { return false; }
+        }
+
+        /// <summary>Hat Claude Code schon eine eigene Statuszeile (dann überschreiben wir sie nicht)?</summary>
+        public static bool ForeignStatusLine()
+        {
+            try
+            {
+                if (!File.Exists(ClaudeSettingsPath)) return false;
+                var root = JsonNode.Parse(File.ReadAllText(ClaudeSettingsPath), documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) as JsonObject;
+                return root?["statusLine"] != null && !root["statusLine"].ToJsonString().Contains(LimitsUrl);
+            }
+            catch { return false; }
+        }
+
         public void Handle(string body, NameValueCollection q)
         {
             if (!host.Settings.ClaudeEnabled || string.IsNullOrWhiteSpace(body)) return;
@@ -258,6 +348,9 @@ namespace DynamicIsland
                     if (ev == "PreToolUse" || ev == "PostToolUse") entry["matcher"] = "*";
                     list.Add(entry);
                 }
+                // Statuszeile für die Nutzungs-Limits – nur, wenn noch keine eigene da ist
+                if (root["statusLine"] == null)
+                    root["statusLine"] = new JsonObject { ["type"] = "command", ["command"] = StatusCommand };
                 File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
                 return null;
             }
@@ -276,7 +369,8 @@ namespace DynamicIsland
                 var path = ClaudeSettingsPath;
                 if (!File.Exists(path)) return null;
                 var root = JsonNode.Parse(File.ReadAllText(path), documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) as JsonObject;
-                if (!(root?["hooks"] is JsonObject hooks)) return null;
+                if (root?["statusLine"] != null && root["statusLine"].ToJsonString().Contains(LimitsUrl)) root.Remove("statusLine");
+                if (!(root?["hooks"] is JsonObject hooks)) { File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true })); return null; }
                 foreach (var ev in hooks.Select(kv => kv.Key).ToList())
                 {
                     if (!(hooks[ev] is JsonArray list)) continue;
@@ -620,6 +714,8 @@ namespace DynamicIsland
                 var p = prompt.Replace('\r', ' ').Replace('\n', ' ').Trim();
                 lines.Add("„" + (p.Length > 70 ? p.Substring(0, 69).TrimEnd() + "…" : p) + "“");
             }
+            var lim = ClaudeTracker.LimitsLine();
+            if (lim != null) lines.Add(lim);
             Detail = string.Join("\n", lines);
             RefreshBubble();
         }

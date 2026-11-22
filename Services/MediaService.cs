@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -185,6 +185,7 @@ namespace DynamicIsland
                     var bmp = await LoadArtAsync(p.Thumbnail);
                     Art = bmp;
                     Accent = bmp != null ? AccentOf(bmp) : Colors.White;
+                    SoundCloud = DetectSoundCloud(AppId, Title);
                 }
             }
             catch (Exception ex) { Program.Log(ex); }
@@ -269,7 +270,39 @@ namespace DynamicIsland
             catch { }
         }
 
-        public string AppName => NameOf(AppId);
+        /// <summary>Läuft gerade SoundCloud (App oder Browser-Tab)? Dann heißt die Quelle „SoundCloud“.</summary>
+        public bool SoundCloud { get; private set; }
+        public static readonly Color SoundCloudOrange = Color.FromRgb(0xFF, 0x55, 0x00);
+
+        public string AppName => SoundCloud ? "SoundCloud" : NameOf(AppId);
+
+        static readonly string[] Browsers = { "chrome", "msedge", "firefox", "opera", "brave", "vivaldi", "arc", "zen" };
+
+        /// <summary>SoundCloud im Browser erkennen: ein Browserfenster mit „SoundCloud“ im Titel, in dem der Songtitel steht.</summary>
+        static bool DetectSoundCloud(string appId, string title)
+        {
+            var id = (appId ?? "").ToLowerInvariant();
+            if (id.Contains("soundcloud")) return true;
+            if (string.IsNullOrWhiteSpace(title) || !Browsers.Any(b => id.Contains(b))) return false;
+            try
+            {
+                foreach (var p in System.Diagnostics.Process.GetProcesses())
+                {
+                    try
+                    {
+                        string pn = p.ProcessName.ToLowerInvariant();
+                        if (!Browsers.Any(b => pn.StartsWith(b))) continue;
+                        string wt = p.MainWindowTitle ?? "";
+                        if (wt.IndexOf("SoundCloud", StringComparison.OrdinalIgnoreCase) >= 0
+                            && wt.IndexOf(title.Length > 40 ? title.Substring(0, 40) : title, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                    }
+                    catch { }
+                    finally { p.Dispose(); }
+                }
+            }
+            catch { }
+            return false;
+        }
 
         public static string NameOf(string appId)
         {

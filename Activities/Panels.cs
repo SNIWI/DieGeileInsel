@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -369,7 +369,10 @@ namespace DynamicIsland
             new DashTile { Key = "weather",    Label = "Wetter",        Glyph = WeatherActivity.Glyph, Tint = Ui.Teal, Run = h => h.ShowWeather() },
             new DashTile { Key = "todo",       Label = "To Do",       Glyph = "\uE73A", Tint = Ui.Blue,   Run = h => h.ShowTodo() },
             new DashTile { Key = "calendar",   Label = "Kalender",      Glyph = "\uE787", Tint = Ui.Red,    Run = h => h.ShowCalendar() },
-            new DashTile { Key = "ai",         Label = "Gemini",        Glyph = "\uE8BD", Tint = Ui.Purple, Run = h => h.ShowAi(true) },
+            new DashTile { Key = "ai",         Label = "KI-Chat",        Glyph = "\uE8BD", Tint = Ui.Purple, Run = h => h.ShowAi(true) },
+            new DashTile { Key = "logitech", Label = "Maus & Tastatur", Glyph = "", Tint = Ui.Teal, Run = h => h.ShowLogitech() },
+            new DashTile { Key = "claudevoice", Label = "Claude diktieren", Glyph = "", Tint = ClaudeTracker.Orange, Run = h => h.ClaudeVoice() },
+            new DashTile { Key = "claudelimits", Label = "Claude-Limits", Glyph = "", Tint = ClaudeTracker.Orange, Run = h => h.ShowClaudeLimits() },
             new DashTile { Key = "ocr",        Label = "Text lesen",    Glyph = "\uE722", Tint = Ui.Purple, Run = h => h.StartOcr() },
             new DashTile { Key = "lock",       Label = "Sperren",       Glyph = "", Tint = Ui.WhiteC, Run = h => h.LockPc() },
             new DashTile { Key = "cats",       Label = "Katzen",        Glyph = "\U0001F431", Emoji = true, Run = h => h.OpenSetup("cats") },

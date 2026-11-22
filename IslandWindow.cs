@@ -171,6 +171,7 @@ namespace DynamicIsland
             Ui.CompactAlerts = Ui.AlertDesign == "small" || Ui.AlertDesign == "minimal";
             CatView.CurlUp = Settings.CatsCurl;   // Katzen: im Schlaf einrollen
             CatView.Walk = Settings.CatsWalk;     // Katzen: neben der Island herumlaufen
+            CatView.MoodAuto = Settings.CatsMoodAuto;   // Katzen: Laune nach Tageszeit und Wetter
             Ui.AlertMotion = Settings.AlertMotion ?? "slide";
             Ui.SpotifyAccent = Ui.ParseColor(Settings.SpotifyColor, Color.FromRgb(0x1E, 0xD7, 0x60));
             BuildVisuals();
@@ -1451,13 +1452,21 @@ namespace DynamicIsland
         Native.Monitor monitor;
 
         /// <summary>WPF-Einheiten pro Bildschirm-Pixel (Windows-Skalierung).</summary>
-        static double DipPerPx
+        /// Fest aus der DPI des Fensters – nicht aus der Breite des Hauptbildschirms. Die stimmt direkt nach dem
+        /// Einschalten der Monitore oft noch nicht (alte Auflösung), dann rutschte die Island zur Seite.
+        double DipPerPx
         {
             get
             {
-                var p = Native.PrimaryMonitor();
-                double pw = p.Bounds.Right - p.Bounds.Left;
-                return pw > 0 ? SystemParameters.PrimaryScreenWidth / pw : 1;
+                try
+                {
+                    var src = PresentationSource.FromVisual(this);
+                    double m = src?.CompositionTarget?.TransformFromDevice.M11 ?? 0;
+                    if (m > 0.2 && m <= 1.01) return m;
+                }
+                catch { }
+                uint dpi = Native.SystemDpi;
+                return dpi >= 96 ? 96.0 / dpi : 1;
             }
         }
 
@@ -1486,8 +1495,39 @@ namespace DynamicIsland
         /// <summary>Bildschirme an-/abgesteckt oder umgestellt → Island neu platzieren.</summary>
         void OnDisplaysChanged()
         {
+            // Beim Aufwachen melden sich die Monitore nacheinander, Windows schiebt Fenster dabei selbst herum –
+            // darum gleich und noch ein paar Mal kurz danach neu platzieren.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                foreach (int ms in new[] { 1, 400, 1500, 4000, 9000 })
+                {
+                    var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ms) };
+                    t.Tick += (s, e) => { t.Stop(); RePlace(); };
+                    t.Start();
+                }
+            }));
+        }
+
+        void RePlace()
+        {
+            if (dragging) return;
             monitor = null;
-            Dispatcher.BeginInvoke(new Action(() => { MoveTo(Settings.PosX, Settings.PosY, false); Relayout(); }));
+            MoveTo(Settings.PosX, Settings.PosY, false, true);
+            Relayout();
+        }
+
+        /// <summary>Wächter (alle 2 s): steht die Island nicht mehr da, wo sie hingehört (Monitor weg, von Windows verschoben)?</summary>
+        void CheckPlacement()
+        {
+            if (dragging) return;
+            var m = monitor;
+            if (m != null && !Native.Monitors().Any(x => x.Name == m.Name && x.Bounds.Left == m.Bounds.Left && x.Bounds.Top == m.Bounds.Top
+                                                         && x.Bounds.Right == m.Bounds.Right && x.Bounds.Bottom == m.Bounds.Bottom))
+            { RePlace(); return; }
+            var r = MonRect;
+            var (cx, cy) = Clamp(r, Settings.PosX, Settings.PosY);
+            double wantLeft = r.Left + (r.Width - Width) / 2 + cx, wantTop = r.Top + cy;
+            if (Math.Abs(Left - wantLeft) > 1.5 || Math.Abs(Top - wantTop) > 1.5) RePlace();
         }
 
         /// <summary>Mausposition in WPF-Einheiten (berücksichtigt die Windows-Skalierung).</summary>
@@ -1499,21 +1539,26 @@ namespace DynamicIsland
         }
 
         /// <summary>Setzt die Island an eine neue Stelle (x = Abstand zur Mitte, y = Abstand von oben) auf ihrem Bildschirm.</summary>
-        void MoveTo(double x, double y, bool snap)
+        void MoveTo(double x, double y, bool snap, bool keep = false)
         {
             var r = MonRect;
+            var (cx, cy) = Clamp(r, x, y);
+            if (snap && Math.Abs(cx) < 18) cx = 0; // rastet nur in der Mitte ein – sonst frei verschiebbar
+            // keep: nur neu hinsetzen (Monitor-Wechsel) – die gespeicherte Stelle bleibt, auch wenn der Bildschirm
+            // gerade kurz kleiner ist (sonst wanderte die Island nach dem Aufwachen dauerhaft zur Seite)
+            if (!keep) { Settings.PosX = cx; Settings.PosY = cy; }
+            Left = r.Left + (r.Width - Width) / 2 + cx;
+            Top = r.Top + cy;
+            UpdateNudge(false);
+        }
+
+        static (double, double) Clamp(Rect r, double x, double y)
+        {
             double maxX = Math.Max(0, r.Width / 2 - 70);
             double maxY = Math.Max(0, r.Height - 260);   // große Island soll noch auf den Bildschirm passen
             if (double.IsNaN(x)) x = 0;
             if (double.IsNaN(y)) y = 0;
-            x = Math.Max(-maxX, Math.Min(maxX, x));
-            y = Math.Max(0, Math.Min(maxY, y));
-            if (snap && Math.Abs(x) < 18) x = 0; // rastet nur in der Mitte ein – sonst frei verschiebbar
-            Settings.PosX = x;
-            Settings.PosY = y;
-            Left = r.Left + (r.Width - Width) / 2 + x;
-            Top = r.Top + y;
-            UpdateNudge(false);
+            return (Math.Max(-maxX, Math.Min(maxX, x)), Math.Max(0, Math.Min(maxY, y)));
         }
 
         double grabDx, grabDy;
@@ -2318,6 +2363,64 @@ namespace DynamicIsland
         }
 
         // ---- Wetter ----
+        /// <summary>
+        /// Spracheingabe für Claude: Claude-Fenster (App) nach vorn holen – sonst bleibt das aktive Fenster, z. B. das Terminal
+        /// mit Claude Code – und die Windows-Spracheingabe (Win+H) starten. Gesprochenes landet direkt im Eingabefeld.
+        /// </summary>
+        public async void ClaudeVoice()
+        {
+            Collapse();
+            var fg = AiNative.GetForegroundWindow();
+            bool app = AppActivator.Activate("Claude", null);
+            if (!app && fg != IntPtr.Zero) AiNative.SetForegroundWindow(fg);
+            await Task.Delay(app ? 650 : 250);
+            WindowList.WinKey(0x48);   // Win+H
+            Alert("claude-voice", 4, g =>
+            {
+                g.Glyph = "";
+                g.Accent = ClaudeTracker.Orange;
+                g.LeftText = "Sprich jetzt";
+                g.RightText = app ? "Claude" : "aktives Fenster";
+                g.CompactW = 280;
+            });
+        }
+
+        /// <summary>Nutzungs-Limits von Claude (5 Stunden / Woche) – kommen über die Statuszeile von Claude Code.</summary>
+        public void ShowClaudeLimits()
+        {
+            var a = new GenericActivity
+            {
+                Id = "claude-limits",
+                Glyph = "✻",
+                GlyphFont = Ui.SymbolFont,
+                Accent = ClaudeTracker.Orange,
+                ExpiresAt = DateTime.Now.AddSeconds(30),
+                Ticker = g =>
+                {
+                    double? f = ClaudeTracker.FivePct, w = ClaudeTracker.WeekPct;
+                    bool known = (f != null || w != null) && (DateTime.Now - ClaudeTracker.LimitsAt).TotalHours < 12;
+                    g.Title = "Claude-Nutzung";
+                    g.LeftText = known ? "5 Std " + Math.Round(f ?? 0) + " %" : "Claude-Limits";
+                    g.RightText = known && w != null ? "Woche " + Math.Round(w.Value) + " %" : "";
+                    g.Subtitle = !known
+                        ? (ClaudeTracker.LimitsInstalled() ? "Noch keine Daten – schick Claude eine Nachricht" : "Einstellungen → Claude → verbinden")
+                        : "5 Stunden: " + Math.Round(f ?? 0) + " %" + (ClaudeTracker.FiveReset != default ? " · frei " + ClaudeTracker.ResetText(ClaudeTracker.FiveReset) : "");
+                    g.Detail = known && w != null
+                        ? "Woche: " + Math.Round(w.Value) + " %" + (ClaudeTracker.WeekReset != default ? " · frei " + ClaudeTracker.ResetText(ClaudeTracker.WeekReset) : "") +
+                          "\nStand: " + ClaudeTracker.LimitsAt.ToString("HH:mm")
+                        : null;
+                    g.Progress = known ? Math.Min(1, Math.Max(f ?? 0, 0) / 100) : (double?)null;
+                    g.Accent = (f ?? 0) >= 95 || (w ?? 0) >= 95 ? Ui.Red : (f ?? 0) >= 80 || (w ?? 0) >= 80 ? Ui.Orange : ClaudeTracker.Orange;
+                }
+            };
+            a.Ticker(a);
+            a.TapAction = () => { OpenSetup("claude"); return true; };
+            var old = activities.FirstOrDefault(x => x.Id == "claude-limits");
+            if (old != null) old.Finished = true;
+            Add(a);
+            Expand(a);
+        }
+
         public void ShowWeather()
         {
             // Wetter wohnt jetzt mit dem Kalender auf der Seite „Heute“
@@ -2511,12 +2614,24 @@ namespace DynamicIsland
             {
                 dragLeaveTimer.Stop();
                 if (CursorOver(pill)) return;
+                EndObsidianHint();
                 ai?.EndDrop();
                 if (dragOpened && expandedAct is AiActivity) Collapse();
                 dragOpened = false;
             };
             DragEnter += (s, e) =>
             {
+                // Dateien immer, Text nur ohne KI-Drop-Zone → direkt in Obsidian (sonst dort als eigene Karte)
+                bool files = HasFiles(e.Data), text = AiActivity.HasText(e.Data);
+                obsDrag = (files || (text && !Settings.AiEnabled)) && Settings.ObsidianEnabled && Obsidian.VaultPath(Settings) != null;
+                if (obsDrag)
+                {
+                    e.Effects = DragDropEffects.Copy;
+                    dragLeaveTimer.Stop();
+                    lastActive = DateTime.Now;
+                    ShowObsidianHint();
+                    return;
+                }
                 if (!Settings.AiEnabled || !AiActivity.HasText(e.Data)) { e.Effects = DragDropEffects.None; return; }
                 e.Effects = DragDropEffects.Copy;
                 dragLeaveTimer.Stop();
@@ -2527,6 +2642,7 @@ namespace DynamicIsland
             };
             DragOver += (s, e) =>
             {
+                if (obsDrag) { e.Effects = DragDropEffects.Copy; e.Handled = true; dragLeaveTimer.Stop(); return; }
                 if (!Settings.AiEnabled || !AiActivity.HasText(e.Data)) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
                 e.Effects = DragDropEffects.Copy;
                 e.Handled = true;
@@ -2538,10 +2654,76 @@ namespace DynamicIsland
                 // nicht auf eine der vier Karten fallen gelassen → Text zeigen, Aktion per Chip wählen
                 dragLeaveTimer.Stop();
                 dragOpened = false;
+                if (obsDrag) { obsDrag = false; SaveToObsidian(e.Data); return; }
                 var t = AiActivity.DroppedText(e.Data);
                 if (string.IsNullOrWhiteSpace(t)) { ai?.EndDrop(); return; }
                 AiAct.ShowResult("Text", t, true);
             };
+        }
+
+        bool obsDrag;
+        GenericActivity obsHint;
+
+        static bool HasFiles(IDataObject d)
+        {
+            try { return d.GetDataPresent(DataFormats.FileDrop); } catch { return false; }
+        }
+
+        void ShowObsidianHint()
+        {
+            if (obsHint != null && !obsHint.Finished) return;
+            string vault = Obsidian.VaultPath(Settings);
+            string note = vault == null ? "" : System.IO.Path.GetFileNameWithoutExtension(Obsidian.NoteRelPath(Settings, vault).TrimEnd('/'));
+            obsHint = Alert("obs-drop", 30, g =>
+            {
+                g.Glyph = "";
+                g.Accent = Obsidian.Purple;
+                g.LeftText = "Loslassen → Obsidian";
+                g.RightText = note;
+                g.CompactW = 300;
+            });
+        }
+
+        void EndObsidianHint()
+        {
+            if (obsHint == null) return;
+            obsHint.Finished = true;
+            obsHint = null;
+            obsDrag = false;
+            Relayout();
+        }
+
+        /// <summary>Gezogenen Text / Link / Dateien in die Obsidian-Notiz schreiben und kurz bestätigen.</summary>
+        public void SaveToObsidian(IDataObject d)
+        {
+            EndObsidianHint();
+            string note = null, what = "Text";
+            try
+            {
+                if (HasFiles(d) && d.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
+                {
+                    note = Obsidian.AddFiles(Settings, files);
+                    what = files.Length == 1 ? System.IO.Path.GetFileName(files[0]) : files.Length + " Dateien";
+                }
+                else
+                {
+                    var t = AiActivity.DroppedText(d);
+                    note = Obsidian.AddText(Settings, t);
+                    if (t != null && Uri.TryCreate(t.Trim(), UriKind.Absolute, out _)) what = "Link";
+                }
+            }
+            catch (Exception ex) { Program.Log(ex); }
+            bool ok = note != null;
+            if (ok) Celebrate(Obsidian.Purple, "obsidian");
+            Alert("obs-done", ok ? 4 : 5, g =>
+            {
+                g.Banner = true;
+                g.Glyph = ok ? "" : "";
+                g.Accent = ok ? Obsidian.Purple : Ui.Orange;
+                g.Title = ok ? what + " gespeichert" : "Nicht gespeichert";
+                g.Subtitle = ok ? "Obsidian · " + note : "Vault nicht gefunden oder Datei gesperrt";
+                g.TapAction = () => { Obsidian.OpenNote(Settings); g.Finished = true; Relayout(); return true; };
+            });
         }
 
         static class AiNative
@@ -2909,16 +3091,18 @@ namespace DynamicIsland
         }
 
         /// <summary>Ein Lichtstreifen läuft einmal um die Island herum und verglüht.</summary>
+        /// Größe = Zielgröße der Island (sie wächst beim Hinweis ja gerade erst) und folgt ihr per Bindung –
+        /// früher nahm der Ring die alte, kleine Größe und war darum zu kurz.
         void GlowOrbit(Color c)
         {
             if (pillStackRef == null) return;
-            double w = Math.Max(30, pill.ActualWidth), h = Math.Max(20, pill.ActualHeight);
+            double w = Math.Max(30, targetW > 0 ? targetW : pill.ActualWidth), h = Math.Max(20, targetH > 0 ? targetH : pill.ActualHeight);
             double r = Math.Min(h / 2, 44), th = 2.6;
             double perim = 2 * (w + h) - (8 - 2 * Math.PI) * r;
-            double dash = perim * 0.22 / th, gap = perim / th;
+            double dash = perim * 0.3 / th, gap = perim / th;
             var line = new System.Windows.Shapes.Rectangle
             {
-                Width = w, Height = h, RadiusX = r, RadiusY = r,
+                RadiusX = r, RadiusY = r,
                 Stroke = Ui.Br(CatStyle.Mix(c, Colors.White, 0.18)),   // reine Ereignisfarbe (leicht aufgehellt, ohne Farbverlauf)
                 StrokeThickness = th,
                 StrokeDashArray = new DoubleCollection { dash, gap },
@@ -2927,13 +3111,15 @@ namespace DynamicIsland
                 IsHitTestVisible = false, RenderTransform = pill.RenderTransform, RenderTransformOrigin = new Point(0.5, 0),
                 Effect = new DropShadowEffect { Color = c, BlurRadius = 16, ShadowDepth = 0, Opacity = 1 }
             };
+            line.SetBinding(WidthProperty, new System.Windows.Data.Binding("Width") { Source = pill });
+            line.SetBinding(HeightProperty, new System.Windows.Data.Binding("Height") { Source = pill });
             pillStackRef.Children.Add(line);
-            var run = new DoubleAnimation(0, -perim / th, TimeSpan.FromMilliseconds(1250)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+            var run = new DoubleAnimation(0, -perim / th, TimeSpan.FromMilliseconds(1600)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
             line.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, run);
-            var fade = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(1500) };
+            var fade = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(1900) };
             fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120))));
-            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1150))));
-            fade.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1500))));
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1500))));
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1900))));
             fade.Completed += (s, e) => pillStackRef.Children.Remove(line);
             line.Opacity = 0;
             line.BeginAnimation(OpacityProperty, fade);
@@ -2969,7 +3155,7 @@ namespace DynamicIsland
         void GlowShine(Color c)
         {
             if (pillStackRef == null) return;
-            double w = Math.Max(30, pill.ActualWidth), h = Math.Max(20, pill.ActualHeight), r = Math.Min(h / 2, 44);
+            double w = Math.Max(30, targetW > 0 ? targetW : pill.ActualWidth), h = Math.Max(20, targetH > 0 ? targetH : pill.ActualHeight), r = Math.Min(h / 2, 44);
             var tr = new TranslateTransform(-w * 0.6, 0);
             var streak = new System.Windows.Shapes.Rectangle
             {
@@ -3116,7 +3302,7 @@ namespace DynamicIsland
                 case "clipboard": return "Zwischenablage";
                 case "shortcuts": return "Verknüpfungen";
                 case "apps": return "Apps";
-                case "ai": return "Gemini";
+                case "ai": return Gemini.Name;
                 case "calendar": return "Heute";
                 case "todo": return "To Do";
                 case "weather": return "Wetter";
@@ -3306,7 +3492,9 @@ namespace DynamicIsland
             bool isDiscord = (app ?? "").IndexOf("discord", StringComparison.OrdinalIgnoreCase) >= 0;
             bool isWhatsApp = (app ?? "").IndexOf("whatsapp", StringComparison.OrdinalIgnoreCase) >= 0;
             // andere Apps: die Farbe von „Neue Nachricht“ (Animationen) – nicht die Akzentfarbe, die kann Weiß sein
-            Color accent = isDiscord ? DiscordVoiceActivity.Blurple : isWhatsApp ? Ui.Green : EventColor("message", Ui.Blue);
+            Color accent = isDiscord ? DiscordVoiceActivity.Blurple : isWhatsApp ? Ui.Green
+                : (app ?? "").IndexOf("teams", StringComparison.OrdinalIgnoreCase) >= 0 ? Color.FromRgb(0x7B, 0x83, 0xEB)   // Teams-Lila
+                : EventColor("message", Ui.Blue);
             Celebrate(call ? Ui.Green : accent, "message");
 
             var a = Alert(call ? "call-in" : "msg", call ? 25 : 7, g =>
@@ -3320,11 +3508,22 @@ namespace DynamicIsland
                 g.CompactW = 430;
                 g.Buttons.Clear();
                 g.RightFactory = null;
+                // Logo der App, von der die Mitteilung kommt (WhatsApp, Teams, Outlook …)
+                var logo = AppIcons.Get(aumid, app);
+                if (logo != null) g.IconFactory = s => AppIcons.Element(logo, s);
+                else if (isDiscord) g.IconFactory = s => Logos.Discord(s * 0.85);
+                else g.IconFactory = null;
                 if (!string.IsNullOrEmpty(iconUrl)) g.RightFactory = () => WebAvatar.Circle(iconUrl, 38);
                 if (call && isDiscord && channelId != null && Discord.Connected)
                 {
                     g.Buttons.Add(new ActionButton("\uE717", Ui.Br(Ui.Green), () => { Discord.Join(channelId); g.Finished = true; Relayout(); }));
                     g.Buttons.Add(new ActionButton("\uE778", Ui.Br(Ui.Red), () => { g.Finished = true; Relayout(); }));
+                }
+                else if (call)
+                {
+                    // WhatsApp, Teams, Discord ohne Verbindung \u2026: Knopf im Anruf-Fenster bzw. in der Windows-Mitteilung dr\u00FCcken
+                    g.Buttons.Add(new ActionButton("\uE717", Ui.Br(Ui.Green), () => AnswerCall(g, app, aumid, true, isDiscord, isWhatsApp)));
+                    g.Buttons.Add(new ActionButton("\uE778", Ui.Br(Ui.Red), () => AnswerCall(g, app, aumid, false, isDiscord, isWhatsApp)));
                 }
                 else if (!call && !string.IsNullOrWhiteSpace(title))
                 {
@@ -3340,6 +3539,24 @@ namespace DynamicIsland
                 g.TapAction = () => { OpenSourceApp(app, aumid, isDiscord, isWhatsApp); g.Finished = true; Relayout(); return true; };
             });
             Rebuild(a);
+        }
+
+        async void AnswerCall(GenericActivity g, string app, string aumid, bool accept, bool isDiscord, bool isWhatsApp)
+        {
+            g.Finished = true;
+            Relayout();
+            bool ok = await CallUi.AnswerAsync(app, accept);
+            if (ok) return;
+            // Knopf nicht gefunden → App öffnen, dort annehmen
+            if (accept) OpenSourceApp(app, aumid, isDiscord, isWhatsApp);
+            Alert("call-ui", 4, a =>
+            {
+                a.Glyph = "";
+                a.Accent = Ui.Orange;
+                a.LeftText = accept ? "In der App annehmen" : "Ablehnen nicht gefunden";
+                a.RightText = app;
+                a.CompactW = 300;
+            });
         }
 
         /// <summary>Discord-Stream (Go Live) beenden – über den Knopf im Discord-Fenster.</summary>
@@ -3873,6 +4090,96 @@ namespace DynamicIsland
         public BtDev StandardHeadphones => bt.Headphones(IsAirPodsName);
 
         /// <summary>Akkustand eines verbundenen Bluetooth-Geräts (falls Windows ihn kennt).</summary>
+        // ---- Logitech: Akku von Maus / Tastatur ----
+        List<LogiDevice> logi = new List<LogiDevice>();
+        bool logiScanned;
+        readonly Dictionary<string, int> logiWarned = new Dictionary<string, int>();
+        public IReadOnlyList<LogiDevice> LogiDevices => Settings.LogitechEnabled ? logi : new List<LogiDevice>();
+
+        async void PollLogitech()
+        {
+            List<LogiDevice> now;
+            try { now = await Logitech.ScanAsync(); } catch (Exception ex) { Program.Log(ex); return; }
+            if (now == null) return;
+            bool first = !logiScanned;
+            logiScanned = true;
+            var before = logi;
+            logi = now;
+            foreach (var d in now)
+            {
+                var old = before.FirstOrDefault(x => x.Name == d.Name);
+                // eingeschaltet / neu verbunden
+                // wenig Akku: bei 15 % und 5 % je einmal (zurückgesetzt, sobald geladen wird)
+                if (d.Charging || d.Full) logiWarned.Remove(d.Name);
+                else
+                {
+                    int warnAt = Math.Max(5, Math.Min(50, Settings.LogitechWarnAt));   // nur unter dieser Grenze melden, nochmal bei 5 %
+                    int level = d.Percent <= 5 ? 5 : d.Percent <= warnAt ? warnAt : 0;
+                    logiWarned.TryGetValue(d.Name, out int warned);
+                    if (level > 0 && (warned == 0 || level < warned))
+                    {
+                        logiWarned[d.Name] = level;
+                        LogiAlert(d, d.Name + ": Akku " + d.Percent + " %", level == 5 ? "Fast leer – bitte laden" : "Bald aufladen", level == 5 ? Ui.Red : Ui.Orange);
+                    }
+                }
+            }
+            if (expandedAct is BluetoothActivity) Rebuild(expandedAct);
+        }
+
+        static Color LogiColor(LogiDevice d) => d.Charging || d.Full ? Ui.Green : d.Percent <= 5 ? Ui.Red : d.Percent <= 15 ? Ui.Orange : Ui.Teal;
+
+        void LogiAlert(LogiDevice d, string title, string sub, Color c)
+        {
+            Alert("logi-" + d.Key, 6, g =>
+            {
+                g.Banner = true;
+                g.Glyph = d.Glyph;
+                g.Accent = c;
+                g.Title = title;
+                g.Subtitle = sub;
+                g.Progress = d.Percent / 100.0;
+                g.Category = "device";
+                g.TapAction = () => { ShowLogitech(); return true; };
+            });
+        }
+
+        /// <summary>Alle Logitech-Geräte mit Akku (Kachel „Maus &amp; Tastatur“).</summary>
+        public void ShowLogitech()
+        {
+            var a = new GenericActivity
+            {
+                Id = "logitech",
+                Glyph = "",
+                Accent = Ui.Teal,
+                ExpiresAt = DateTime.Now.AddSeconds(30),
+                Ticker = g =>
+                {
+                    var list = LogiDevices;
+                    g.Title = "Maus & Tastatur";
+                    if (list.Count == 0)
+                    {
+                        g.LeftText = "Logitech";
+                        g.Subtitle = !Settings.LogitechEnabled ? "Aus – Einstellungen → Hinweise" : logiScanned ? "Kein kabelloses Logitech-Gerät gefunden" : "Suche …";
+                        g.Detail = null; g.Progress = null; g.RightText = "";
+                        return;
+                    }
+                    var low = list.OrderBy(x => x.Percent).First();
+                    g.LeftText = low.Name;
+                    g.RightText = low.Percent + " %";
+                    g.Accent = LogiColor(low);
+                    g.Subtitle = string.Join("  ·  ", list.Select(x => x.Name + " " + x.Percent + " %" + (x.Charging ? " ⚡" : "")));
+                    g.Detail = string.Join("\n", list.Select(x => x.Name + ": " + (x.Full ? "voll geladen" : x.Charging ? "lädt, " + x.Percent + " %" : x.Percent + " %")));
+                    g.Progress = low.Percent / 100.0;
+                }
+            };
+            a.Ticker(a);
+            var old = activities.FirstOrDefault(x => x.Id == "logitech");
+            if (old != null) old.Finished = true;
+            Add(a);
+            Expand(a);
+            PollLogitech();
+        }
+
         public int? BtBatteryOf(string name) => bt.Connected.FirstOrDefault(d => string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase))?.Battery;
 
         bool IsAirPodsName(string n)
@@ -4070,6 +4377,13 @@ namespace DynamicIsland
         void OnTick()
         {
             tickCount++;
+            if (tickCount % 40 == 0) CheckPlacement();                       // Island noch richtig platziert?
+            if (Settings.LogitechEnabled && (tickCount == 160 || tickCount % 2400 == 0)) PollLogitech();   // Logitech-Akku: nach 8 s, dann alle 2 Min
+            if (tickCount % 200 == 0)                                         // Wetter für die Laune der Katzen
+            {
+                CatView.WeatherCode = Weather.HasData ? Weather.Code : -1;
+                CatView.WeatherTemp = Weather.Temp;
+            }
             if (tickCount % 100 == 0) { CheckCalendar(); CheckTodo(); }      // alle 5 s: steht ein Termin / eine Erinnerung an?
             if (tickCount % 60 == 0 && Settings.ShowDownloads) _ = Games.PollAsync();  // Spiele-Downloads (Steam/Epic) alle 3 s
             if (tickCount == 40 || tickCount % 1200 == 0) _ = Weather.RefreshAsync(); // Wetter: beim Start, dann prüfen (lädt höchstens alle 15 Min)
@@ -4854,6 +5168,9 @@ namespace DynamicIsland
         // ---- Lokale API ----
         void OnApi(string path, NameValueCollection q, string body)
         {
+            if (path.StartsWith("/claude-limits")) { Claude.HandleLimits(body); return; }   // Statuszeile: Nutzungs-Limits
+            if (path.StartsWith("/logitech")) { ShowLogitech(); return; }                       // Akku von Maus & Tastatur zeigen
+            if (path.StartsWith("/settings")) { OpenSetup(q["page"]); if (q["q"] != null) setupWin?.Search(q["q"]); return; }   // Einstellungen öffnen (?page=…&q=Suche)
             if (path.StartsWith("/claude")) { Claude.Handle(body, q); return; }
             string id = "api-" + (q["id"] ?? "1");
             if (path.StartsWith("/hide"))
@@ -4898,6 +5215,7 @@ namespace DynamicIsland
             }
             if (isNew) Add(g);
             else Rebuild(g);
+            if (q["glow"] != null) Glow(g.Accent, q["glow"]);   // ?glow=orbit / halo / shine / ring: Licht-Effekt dazu
         }
 
         // =================================================================
@@ -5034,6 +5352,7 @@ namespace DynamicIsland
             Ui.CompactAlerts = Ui.AlertDesign == "small" || Ui.AlertDesign == "minimal";
             CatView.CurlUp = Settings.CatsCurl;   // Katzen: im Schlaf einrollen
             CatView.Walk = Settings.CatsWalk;     // Katzen: neben der Island herumlaufen
+            CatView.MoodAuto = Settings.CatsMoodAuto;   // Katzen: Laune nach Tageszeit und Wetter
             Ui.AlertMotion = Settings.AlertMotion ?? "slide";
             Ui.SpotifyAccent = Ui.ParseColor(Settings.SpotifyColor, Color.FromRgb(0x1E, 0xD7, 0x60));
             RefreshCatsIfChanged();   // nicht bei jeder Einstellung neu aufbauen (weckte die Katzen und ließ eine hüpfen)
@@ -5071,7 +5390,7 @@ namespace DynamicIsland
             cm.Items.Add(MItem("Helligkeit", ShowBrightness));
             if (Settings.AiEnabled)
             {
-                cm.Items.Add(MItem("Gemini fragen", () => ShowAi(true)));
+                cm.Items.Add(MItem(Gemini.Name + " fragen", () => ShowAi(true)));
                 cm.Items.Add(MItem("Text vom Bildschirm lesen", StartOcr));
             }
             cm.Items.Add(new Separator());

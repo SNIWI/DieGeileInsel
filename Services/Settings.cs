@@ -98,6 +98,12 @@ namespace DynamicIsland
         public bool AiEnabled { get; set; } = true;
         public string GeminiKeyProtected { get; set; }   // verschlüsselt (DPAPI)
         public string GeminiModel { get; set; } = "gemini-3.5-flash-lite";
+        /// <summary>Welche KI antwortet: gemini, openai (ChatGPT), grok, claude, mistral, deepseek, openrouter.</summary>
+        public string AiProvider { get; set; } = "gemini";
+        /// <summary>API-Schlüssel der anderen Anbieter (verschlüsselt, DPAPI).</summary>
+        public Dictionary<string, string> AiKeysProtected { get; set; } = new Dictionary<string, string>();
+        /// <summary>Gewähltes Modell je Anbieter (leer = Standard).</summary>
+        public Dictionary<string, string> AiModelFor { get; set; } = new Dictionary<string, string>();
         public string AiTranslateTo { get; set; } = "Deutsch";
         public bool AiMiddleClickOcr { get; set; } = true;
 
@@ -130,6 +136,28 @@ namespace DynamicIsland
         public bool CatsCurl { get; set; } = true;
         /// <summary>Katzen neben der Island laufen ab und zu herum.</summary>
         public bool CatsWalk { get; set; } = true;
+        /// <summary>Warnen, wenn das Claude-Limit (5 Std / Woche) bei 80 % bzw. 95 % ist.</summary>
+        public bool ClaudeLimitWarn { get; set; } = true;
+
+        // ---- Obsidian: auf die Island gezogene Texte / Dateien landen in einer Notiz ----
+        public bool ObsidianEnabled { get; set; }
+        /// <summary>Vault-Ordner ("" = der zuletzt in Obsidian geöffnete).</summary>
+        public string ObsidianVault { get; set; } = "";
+        /// <summary>"folder" = je Eintrag eine Datei im Inbox-Ordner (ObsidianFolder), "daily" = Tagesnotiz, "note" = feste Notiz (ObsidianNote).</summary>
+        public string ObsidianTarget { get; set; } = "folder";
+        /// <summary>Inbox-Ordner im Vault ("" = automatisch, z. B. „00 Inbox“).</summary>
+        public string ObsidianFolder { get; set; } = "";
+        public string ObsidianNote { get; set; } = "Eingang";
+        /// <summary>Uhrzeit vor jeden Eintrag schreiben.</summary>
+        public bool ObsidianTime { get; set; } = true;
+
+        /// <summary>Akku von Logitech-Maus/-Tastatur lesen (HID++) und bei wenig Akku warnen.</summary>
+        public bool LogitechEnabled { get; set; } = true;
+        /// <summary>Unter wie viel Prozent Akku gewarnt wird (danach nochmal bei 5 %).</summary>
+        public int LogitechWarnAt { get; set; } = 15;
+
+        /// <summary>Laune der Katzen hängt von Tageszeit und Wetter ab.</summary>
+        public bool CatsMoodAuto { get; set; } = true;
         public List<CatConfig> Cats { get; set; } = new List<CatConfig>();
 
         // Claude Code: zeigt in der Island, was Claude gerade macht (über Hooks)

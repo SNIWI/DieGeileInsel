@@ -89,6 +89,7 @@ namespace DynamicIsland
                     string app = "", aumid = null;
                     try { app = n.AppInfo?.DisplayInfo?.DisplayName ?? ""; } catch { }
                     try { aumid = n.AppInfo?.AppUserModelId; } catch { }
+                    await AppIcons.LoadAsync(n.AppInfo, aumid, app);   // Logo der App für die Island (einmal pro App)
                     var texts = new List<string>();
                     try
                     {
@@ -120,6 +121,64 @@ namespace DynamicIsland
                 }
             }
             finally { busy = false; }
+        }
+    }
+
+    /// <summary>Logos der Apps, von denen Mitteilungen kommen (aus Windows, wie im Infocenter).</summary>
+    public static class AppIcons
+    {
+        static readonly Dictionary<string, System.Windows.Media.ImageSource> cache = new Dictionary<string, System.Windows.Media.ImageSource>(StringComparer.OrdinalIgnoreCase);
+
+        static string Key(string aumid, string app) => !string.IsNullOrWhiteSpace(aumid) ? aumid : (app ?? "");
+
+        public static System.Windows.Media.ImageSource Get(string aumid, string app)
+        {
+            lock (cache)
+            {
+                if (cache.TryGetValue(Key(aumid, app), out var img) && img != null) return img;
+                if (!string.IsNullOrWhiteSpace(app) && cache.TryGetValue(app, out img)) return img;
+            }
+            return null;
+        }
+
+        public static async Task LoadAsync(Windows.ApplicationModel.AppInfo info, string aumid, string app)
+        {
+            string key = Key(aumid, app);
+            if (info == null || key.Length == 0) return;
+            lock (cache) if (cache.ContainsKey(key)) return;
+            System.Windows.Media.ImageSource img = null;
+            try
+            {
+                var logo = info.DisplayInfo.GetLogo(new Windows.Foundation.Size(64, 64));
+                using var s = await logo.OpenReadAsync();
+                using var src = System.IO.WindowsRuntimeStreamExtensions.AsStreamForRead(s);
+                var ms = new System.IO.MemoryStream();
+                await src.CopyToAsync(ms);
+                ms.Position = 0;
+                var bi = new System.Windows.Media.Imaging.BitmapImage();
+                bi.BeginInit();
+                bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bi.DecodePixelWidth = 64;
+                bi.StreamSource = ms;
+                bi.EndInit();
+                bi.Freeze();
+                img = bi;
+            }
+            catch { }   // manche Apps haben kein Logo – dann bleibt das normale Symbol
+            lock (cache)
+            {
+                cache[key] = img;
+                if (img != null && !string.IsNullOrWhiteSpace(app)) cache[app] = img;
+            }
+        }
+
+        /// <summary>Logo als abgerundetes Bild in der gewünschten Größe.</summary>
+        public static System.Windows.FrameworkElement Element(System.Windows.Media.ImageSource img, double size)
+        {
+            var im = new System.Windows.Controls.Image { Source = img, Width = size, Height = size, Stretch = System.Windows.Media.Stretch.Uniform };
+            System.Windows.Media.RenderOptions.SetBitmapScalingMode(im, System.Windows.Media.BitmapScalingMode.HighQuality);
+            im.Clip = new System.Windows.Media.RectangleGeometry(new System.Windows.Rect(0, 0, size, size), size * 0.24, size * 0.24);
+            return im;
         }
     }
 

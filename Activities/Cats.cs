@@ -191,6 +191,56 @@ namespace DynamicIsland
 
         /// <summary>Einstellungen (setzt die Island): im Schlaf zusammenrollen · neben der Island herumlaufen.</summary>
         public static bool CurlUp = true, Walk = true;
+
+        /// <summary>Laune hängt von Tageszeit und Wetter ab (nachts verschlafen, bei Sonne verspielt, bei Gewitter kuschelig).</summary>
+        public static bool MoodAuto = true;
+        /// <summary>Wetter für die Laune (setzt die Island): WMO-Code, Temperatur, Tag/Nacht; Code &lt; 0 = unbekannt.</summary>
+        public static int WeatherCode = -1;
+        public static double WeatherTemp = 15;
+
+        /// <summary>Wie wach die Tageszeit macht (−2 tief in der Nacht … +0,5 am Nachmittag).</summary>
+        public static double TimeEnergy(DateTime t)
+        {
+            int h = t.Hour;
+            if (h >= 23 || h < 6) return -2;      // Nacht: schlafen
+            if (h < 9) return -0.5;               // früh: noch müde
+            if (h < 12) return 0;
+            if (h < 14) return -0.5;              // Mittagsschläfchen
+            if (h < 19) return 0.5;               // Nachmittag: verspielt
+            return -0.5;                          // Abend: ruhig
+        }
+
+        /// <summary>Wie das Wetter die Laune beeinflusst, mit kurzem Grund für die Anzeige.</summary>
+        public static (double, string) WeatherEnergy()
+        {
+            int c = WeatherCode;
+            if (c < 0) return (0, null);
+            if (c >= 95) return (-1, "Gewitter");
+            if (c >= 71 && c <= 77 || c == 85 || c == 86) return (-0.5, "Schnee");
+            if (c >= 51 && c <= 67 || c >= 80 && c <= 82) return (-0.5, "Regen");
+            if (WeatherTemp >= 28) return (-1, "Hitze");
+            if (WeatherTemp <= 0) return (-0.5, "Kälte");
+            if (c <= 1) return (0.5, "Sonne");
+            return (0, null);
+        }
+
+        public static string TimeName(DateTime t)
+        {
+            int h = t.Hour;
+            return h >= 23 || h < 6 ? "Nacht" : h < 9 ? "Morgen" : h < 12 ? "Vormittag" : h < 14 ? "Mittag" : h < 19 ? "Nachmittag" : "Abend";
+        }
+
+        /// <summary>Laune aus Charakter + Tageszeit + Wetter (oder nur der Charakter, wenn aus).</summary>
+        public static string MoodFor(string baseMood, DateTime t)
+        {
+            if (!MoodAuto) return baseMood ?? "calm";
+            double e = baseMood == "playful" ? 1 : baseMood == "sleepy" ? -1 : 0;
+            e += TimeEnergy(t) + WeatherEnergy().Item1;
+            return e >= 0.75 ? "playful" : e <= -0.75 ? "sleepy" : "calm";
+        }
+
+        /// <summary>Aktuelle Laune dieser Katze.</summary>
+        public string Mood => MoodFor(Config.Mood, DateTime.Now);
         /// <summary>Nur die Katzen neben der Island dürfen laufen (nicht auf dem Kratzbaum). Bereich in Pixeln um den Sitzplatz.</summary>
         public bool CanWalk { get; set; }
         public double WalkMin { get; set; } = -4;
@@ -513,7 +563,7 @@ namespace DynamicIsland
         }
 
         /// <summary>Nach so vielen ruhigen Sekunden schläft die Katze ein (je nach Charakter).</summary>
-        public double SleepAfterSeconds => Config.Mood == "sleepy" ? 25 : Config.Mood == "playful" ? 150 : 60;
+        public double SleepAfterSeconds { get { var m = Mood; return m == "sleepy" ? 25 : m == "playful" ? 150 : 60; } }
 
         void BuildPhoto(CatBreed b, ImageSource photo)
         {
@@ -630,7 +680,8 @@ namespace DynamicIsland
             double dist = Math.Abs(to - from);
             if (dist < 6) return;
             walking = true;
-            double secs = Math.Max(0.7, dist / (Config.Mood == "playful" ? 34 : Config.Mood == "sleepy" ? 18 : 25));
+            var md = Mood;
+            double secs = Math.Max(0.7, dist / (md == "playful" ? 34 : md == "sleepy" ? 18 : 25));
             face.ScaleX = to > from ? -1 : 1;   // Schwanz zeigt nach hinten
 
             // Schritte: leicht auf und ab, Pfoten abwechselnd, kleines Watscheln
@@ -717,7 +768,8 @@ namespace DynamicIsland
         {
             if (walking && (!Walk || !CanWalk)) GoHome();
             if (sleeping || walking || Ui.ReduceMotion || now < nextIdle) return;
-            bool playful = Config.Mood == "playful", sleepy = Config.Mood == "sleepy";
+            var md = Mood;
+            bool playful = md == "playful", sleepy = md == "sleepy";
             nextIdle = now.AddSeconds(playful ? 1.4 + Rnd.NextDouble() * 2.6 : sleepy ? 4 + Rnd.NextDouble() * 6 : 2.5 + Rnd.NextDouble() * 5);
             if (!(Walk && CanWalk) && Math.Abs(walk.X) > 0.5) { GoHome(); return; }
             // ab und zu ein Stück laufen – verspielte öfter, verschlafene selten; meist wieder zurück zum Platz

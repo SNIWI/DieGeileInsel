@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -18,6 +18,31 @@ namespace DynamicIsland
     /// </summary>
     public sealed class GeminiService
     {
+        /// <summary>Anbieter: Schlüssel, Name, Standard-Modell, Endpunkt (OpenAI-kompatibel außer Gemini/Claude), Seite für den Schlüssel.</summary>
+        public sealed class Provider { public string Key, Name, Model, Url, KeyPage; public string[] Prefer; }
+
+        public static readonly Provider[] Providers =
+        {
+            new Provider { Key = "gemini",     Name = "Gemini",     Model = FastModel, KeyPage = "https://aistudio.google.com/apikey" },
+            new Provider { Key = "openai",     Name = "ChatGPT",    Model = "gpt-5-mini", Url = "https://api.openai.com/v1/", KeyPage = "https://platform.openai.com/api-keys",
+                           Prefer = new[] { "gpt-5-mini", "gpt-5", "gpt-4.1-mini", "gpt-4o-mini" } },
+            new Provider { Key = "grok",       Name = "Grok",       Model = "grok-4-fast", Url = "https://api.x.ai/v1/", KeyPage = "https://console.x.ai",
+                           Prefer = new[] { "grok-4-fast", "grok-4", "grok-3-mini", "grok" } },
+            new Provider { Key = "claude",     Name = "Claude",     Model = "claude-haiku-5-5", Url = "https://api.anthropic.com/v1/", KeyPage = "https://console.anthropic.com/settings/keys",
+                           Prefer = new[] { "claude-haiku", "claude-sonnet" } },
+            new Provider { Key = "mistral",    Name = "Mistral",    Model = "mistral-small-latest", Url = "https://api.mistral.ai/v1/", KeyPage = "https://console.mistral.ai/api-keys",
+                           Prefer = new[] { "mistral-small-latest", "mistral-medium-latest", "mistral-large-latest" } },
+            new Provider { Key = "deepseek",   Name = "DeepSeek",   Model = "deepseek-chat", Url = "https://api.deepseek.com/", KeyPage = "https://platform.deepseek.com/api_keys",
+                           Prefer = new[] { "deepseek-chat" } },
+            new Provider { Key = "openrouter", Name = "OpenRouter", Model = "openrouter/auto", Url = "https://openrouter.ai/api/v1/", KeyPage = "https://openrouter.ai/keys",
+                           Prefer = new[] { "openrouter/auto" } },
+        };
+
+        public Provider Current => Providers.FirstOrDefault(p => p.Key == s.AiProvider) ?? Providers[0];
+        public bool IsGemini => Current.Key == "gemini";
+        /// <summary>Name der gewählten KI für die Anzeige („Gemini“, „ChatGPT“, „Grok“ …).</summary>
+        public string Name => Current.Name;
+
         public const string FastModel = "gemini-3.5-flash-lite";
         public const string SmartModel = "gemini-3.6-flash";
         const string Fallback = "gemini-flash-latest";
@@ -36,11 +61,36 @@ namespace DynamicIsland
 
         public string Key
         {
-            get => Secret.Unprotect(s.GeminiKeyProtected);
-            set => s.GeminiKeyProtected = string.IsNullOrWhiteSpace(value) ? null : Secret.Protect(value.Trim());
+            get
+            {
+                if (IsGemini) return Secret.Unprotect(s.GeminiKeyProtected);
+                s.AiKeysProtected ??= new Dictionary<string, string>();
+                return s.AiKeysProtected.TryGetValue(Current.Key, out var k) ? Secret.Unprotect(k) : null;
+            }
+            set
+            {
+                string v = string.IsNullOrWhiteSpace(value) ? null : Secret.Protect(value.Trim());
+                if (IsGemini) { s.GeminiKeyProtected = v; return; }
+                s.AiKeysProtected ??= new Dictionary<string, string>();
+                if (v == null) s.AiKeysProtected.Remove(Current.Key); else s.AiKeysProtected[Current.Key] = v;
+            }
         }
 
-        public string Model => string.IsNullOrWhiteSpace(s.GeminiModel) ? FastModel : s.GeminiModel;
+        public string Model
+        {
+            get
+            {
+                if (IsGemini) return string.IsNullOrWhiteSpace(s.GeminiModel) ? FastModel : s.GeminiModel;
+                s.AiModelFor ??= new Dictionary<string, string>();
+                return s.AiModelFor.TryGetValue(Current.Key, out var m) && !string.IsNullOrWhiteSpace(m) ? m : Current.Model;
+            }
+            set
+            {
+                if (IsGemini) { s.GeminiModel = value; return; }
+                s.AiModelFor ??= new Dictionary<string, string>();
+                if (string.IsNullOrWhiteSpace(value)) s.AiModelFor.Remove(Current.Key); else s.AiModelFor[Current.Key] = value.Trim();
+            }
+        }
 
         const string ChatSystem =
             "Du bist ein Mini-Assistent in einer Dynamic Island unter Windows. " +
@@ -82,7 +132,8 @@ namespace DynamicIsland
         {
             string key = Key;
             if (string.IsNullOrWhiteSpace(key))
-                throw new InvalidOperationException("Kein Gemini-Schlüssel – in den Einstellungen unter „KI“ eintragen.");
+                throw new InvalidOperationException("Kein " + Name + "-Schlüssel – in den Einstellungen unter „KI“ eintragen.");
+            if (!IsGemini) return await OtherAsync(key, turns, system, ct);
 
             var body = new Dictionary<string, object>
             {
@@ -115,6 +166,117 @@ namespace DynamicIsland
                 return Clean(ParseAnswer(text));
             }
             throw new Exception("Modell nicht gefunden.");
+        }
+
+        // ---------- andere Anbieter ----------
+        HttpRequestMessage OtherRequest(string key, string model, List<(string Role, string Text)> turns, string system)
+        {
+            var p = Current;
+            string json;
+            HttpRequestMessage req;
+            if (p.Key == "claude")
+            {
+                var body = new Dictionary<string, object>
+                {
+                    ["model"] = model,
+                    ["max_tokens"] = 1024,
+                    ["messages"] = turns.Select(t => new { role = t.Role == "model" ? "assistant" : "user", content = t.Text }).ToArray()
+                };
+                if (!string.IsNullOrEmpty(system)) body["system"] = system;
+                json = JsonSerializer.Serialize(body);
+                req = new HttpRequestMessage(HttpMethod.Post, p.Url + "messages");
+                req.Headers.Add("x-api-key", key);
+                req.Headers.Add("anthropic-version", "2023-06-01");
+            }
+            else
+            {
+                var msgs = new List<object>();
+                if (!string.IsNullOrEmpty(system)) msgs.Add(new { role = "system", content = system });
+                msgs.AddRange(turns.Select(t => (object)new { role = t.Role == "model" ? "assistant" : "user", content = t.Text }));
+                json = JsonSerializer.Serialize(new { model, messages = msgs });
+                req = new HttpRequestMessage(HttpMethod.Post, p.Url + "chat/completions");
+                req.Headers.Add("Authorization", "Bearer " + key);
+            }
+            req.Content = new StringContent(json, Encoding.UTF8, "application/json");
+            return req;
+        }
+
+        async Task<string> OtherAsync(string key, List<(string Role, string Text)> turns, string system, CancellationToken ct)
+        {
+            string model = Model;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                using var req = OtherRequest(key, model, turns, system);
+                HttpResponseMessage res;
+                try { res = await http.SendAsync(req, ct); }
+                catch (TaskCanceledException) when (!ct.IsCancellationRequested) { throw new Exception(Name + " antwortet nicht (Zeitüberschreitung)."); }
+                catch (HttpRequestException) { throw new Exception("Keine Verbindung zu " + Name + " – Internet prüfen."); }
+                string text = await res.Content.ReadAsStringAsync();
+                int sc = (int)res.StatusCode;
+                if (!res.IsSuccessStatusCode && attempt == 0 && (sc == 404 || (sc == 400 && text.IndexOf("model", StringComparison.OrdinalIgnoreCase) >= 0)))
+                {
+                    // Modell gibt es so nicht (mehr) → aus der Modell-Liste des Anbieters ein passendes nehmen
+                    string found = await FindModelAsync(key, ct);
+                    if (found != null && found != model) { model = found; Model = found; s.Save(); continue; }
+                }
+                if (!res.IsSuccessStatusCode) throw new Exception(OtherError(res.StatusCode, text));
+                using var doc = JsonDocument.Parse(text);
+                var root = doc.RootElement;
+                var sb = new StringBuilder();
+                if (Current.Key == "claude")
+                {
+                    if (root.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.Array)
+                        foreach (var part in c.EnumerateArray())
+                            if (part.TryGetProperty("type", out var ty) && ty.GetString() == "text" && part.TryGetProperty("text", out var t)) sb.Append(t.GetString());
+                }
+                else if (root.TryGetProperty("choices", out var ch) && ch.ValueKind == JsonValueKind.Array && ch.GetArrayLength() > 0
+                         && ch[0].TryGetProperty("message", out var m) && m.TryGetProperty("content", out var mc) && mc.ValueKind == JsonValueKind.String)
+                    sb.Append(mc.GetString());
+                if (sb.Length == 0) throw new Exception(Name + " hat nichts geantwortet.");
+                return Clean(sb.ToString());
+            }
+            throw new Exception("Modell nicht gefunden – in den Einstellungen ein anderes eintragen.");
+        }
+
+        /// <summary>Modell-Liste des Anbieters lesen und das bevorzugte (sonst erste) Chat-Modell wählen.</summary>
+        async Task<string> FindModelAsync(string key, CancellationToken ct)
+        {
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, Current.Url + "models");
+                if (Current.Key == "claude") { req.Headers.Add("x-api-key", key); req.Headers.Add("anthropic-version", "2023-06-01"); }
+                else req.Headers.Add("Authorization", "Bearer " + key);
+                using var res = await http.SendAsync(req, ct);
+                if (!res.IsSuccessStatusCode) return null;
+                using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+                if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) return null;
+                var ids = data.EnumerateArray().Select(e => e.TryGetProperty("id", out var id) ? id.GetString() : null).Where(x => !string.IsNullOrEmpty(x)).ToList();
+                foreach (var pref in Current.Prefer ?? Array.Empty<string>())
+                {
+                    var hit = ids.FirstOrDefault(i => i == pref) ?? ids.FirstOrDefault(i => i.StartsWith(pref, StringComparison.OrdinalIgnoreCase));
+                    if (hit != null) return hit;
+                }
+                return ids.FirstOrDefault(i => !Regex.IsMatch(i, "embed|whisper|tts|image|dall|audio|moderation|vision|realtime|transcribe", RegexOptions.IgnoreCase));
+            }
+            catch { return null; }
+        }
+
+        string OtherError(HttpStatusCode code, string body)
+        {
+            string msg = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("error", out var e))
+                    msg = e.ValueKind == JsonValueKind.String ? e.GetString() : e.TryGetProperty("message", out var m) ? m.GetString() : null;
+            }
+            catch { }
+            int c = (int)code;
+            if (c == 401 || c == 403) return Name + "-Schlüssel ungültig oder ohne Zugriff – in den Einstellungen prüfen.";
+            if (c == 402) return Name + ": kein Guthaben auf dem Konto.";
+            if (c == 429) return Name + "-Limit erreicht oder kein Guthaben – kurz warten.";
+            if (c >= 500) return Name + " ist gerade überlastet – gleich nochmal versuchen.";
+            return Name + "-Fehler " + c + (msg != null ? ": " + msg : "");
         }
 
         static string ParseAnswer(string json)

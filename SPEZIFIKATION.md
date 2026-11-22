@@ -251,6 +251,28 @@ Katzen hüpfen bei jeder Animation mit. „Bewegungen reduzieren“ (Windows) sc
 - **Kurz in der Island anzeigen:** Lautstärke, Kopieren, Feststelltaste, Geräte, Kamera-/Mikro-Punkte, Downloads.
 - **Mitteilungen & Anrufe:** Windows-Mitteilungen erscheinen als Banner in der Farbe von „Neue Nachricht“ (nicht in der Akzentfarbe). Mitteilungen der **Claude-App** werden nicht als Chat-Nachricht gezeigt: Kam gerade (≤ 45 s) ein Hook-Signal, gar nicht (die Island zeigt es schon), sonst als Claude-Meldung in der eingestellten Farbe (fertig) bzw. gelb (wartet).
 - **Reihenfolge bei mehreren Hinweisen** (`AlertPriority`): oben zuerst; ein wichtigerer Hinweis unterbricht einen weniger wichtigen.
+- **App-Logo:** Mitteilungen zeigen das Logo der App, von der sie kommen (aus Windows, `AppIcons` in `Notifications.cs`, einmal pro App geladen); Discord ohne Logo → Discord-Zeichen. Teams-Mitteilungen in Teams-Lila.
+- **Anrufe annehmen/ablehnen** (WhatsApp, Teams, Discord ohne RPC, Skype, Telegram, Signal): grüner/roter Knopf im Anruf-Banner. `CallUi.cs` sucht per UI Automation den Knopf „Annehmen“/„Ablehnen“ zuerst in der Windows-Mitteilung (ShellExperienceHost), dann in den Fenstern der App (bevorzugt „nur Audio“ statt Video). Nicht gefunden → App öffnen + kurzer Hinweis.
+
+### 8.12 Obsidian (Einstellungen → Obsidian)
+- Auf die Island gezogener **Text, Link oder Dateien** landen im Vault (`Obsidian.cs`). Standard **Inbox-Ordner** (`ObsidianFolder`, automatisch der Ordner mit „Inbox“/„Eingang“ im Namen, z. B. „00 Inbox“): Text/Link wird je eine neue Notiz (Name aus den ersten Worten, Frontmatter `erstellt`, `quelle`), Dateien werden direkt in den Ordner kopiert. Alternativ an eine Tagesnotiz (Ordner + Datumsformat aus `.obsidian/daily-notes.json`) oder feste Notiz (`ObsidianNote`, Standard „Eingang“). Optional Uhrzeit vor jedem Eintrag.
+- Vault: aus `%APPDATA%\obsidian\obsidian.json` (zuletzt geöffneter) oder selbst gewählt. Dateien werden in den Anhang-Ordner (`attachmentFolderPath` aus `app.json`, sonst Vault-Ordner) kopiert und verlinkt; Bilder/PDF/Audio eingebettet (`![[…]]`), Dateien im Vault nur verlinkt.
+- Dateien gehen immer direkt nach Obsidian; Text nur, wenn die KI-Drop-Zone aus ist – sonst erscheint dort die Karte „In Obsidian“. Bestätigung „… gespeichert“, Antippen öffnet die Notiz.
+
+### 8.13 Claude: Limits & Spracheingabe
+- **Nutzungs-Limits** (Pro/Max): „Verbinden“ trägt zusätzlich eine Statuszeile in Claude Code ein (nur wenn noch keine eigene existiert), die das Statuszeilen-JSON an `/claude-limits` schickt und selbst nichts anzeigt. Werte (`rate_limits.five_hour` / `seven_day`: Prozent + Reset) stehen in den Details der Claude-Pille, auf der Kachel „Claude-Limits“ und in Einstellungen → Claude. Warnung bei 80 % und 95 % je Fenster (`ClaudeLimitWarn`), pro Fenster nur einmal je Stufe.
+- **Claude diktieren** (Kachel): holt das Claude-Fenster nach vorn (sonst bleibt das aktive Fenster, z. B. Terminal) und startet die Windows-Spracheingabe (Win+H).
+
+### 8.14 KI-Anbieter
+- Einstellungen → KI → Anbieter: **Gemini, ChatGPT (OpenAI), Grok (xAI), Claude (Anthropic), Mistral, DeepSeek, OpenRouter**. Je Anbieter eigener Schlüssel (DPAPI) und Modell (leer = Standard). OpenAI-kompatible Anbieter über `chat/completions`, Claude über `messages`. Gibt es das Modell nicht, wird aus der Modell-Liste des Anbieters ein passendes gewählt und gespeichert.
+- Chat, Drop-Zone und Texterkennung zeigen den Namen des gewählten Anbieters.
+
+### 8.15 Weitere Feinheiten
+- **Katzen-Laune** (`CatsMoodAuto`): Charakter + Tageszeit (nachts/mittags müde, nachmittags verspielt) + Wetter (Sonne verspielt; Regen, Schnee, Gewitter, Hitze, Kälte müde) ergeben die aktuelle Laune (Schlafen, Laufen, Bewegungen).
+- **Licht „Umlauf“** nimmt die Zielgröße der Island und folgt ihr (vorher zu kurz, weil die Island beim Hinweis gerade erst wächst).
+- **Position nach Monitor-Wechsel:** DPI fest aus dem Fenster statt aus der Hauptbildschirm-Breite; nach `DisplaySettingsChanged` mehrfach neu platzieren (0,4 / 1,5 / 4 / 9 s), Wächter alle 2 s; die gespeicherte Position wird dabei nicht verändert.
+- **SoundCloud** im Browser oder als App wird als Quelle „SoundCloud“ erkannt (Browserfenster mit „SoundCloud“ und dem Songtitel im Titel).
+- **Logitech-Akku** (`Logitech.cs`, Einstellung `LogitechEnabled`): liest per HID++ 2.0 direkt über Windows (ohne G HUB/Options+) Name, Typ und Akku kabelloser Logitech-Geräte – an Lightspeed-/Bolt-/Unifying-Empfängern (Geräte 1–6, Schnittstelle FF00/0002) und per Bluetooth (FF43/0202); Funktionen 0x1004, 0x1000 oder 0x1001 (Spannung → %). Alle 2 Min im Hintergrund. Hinweis nur bei wenig Akku: unter der eingestellten Grenze (`LogitechWarnAt`, 10/15/20/30 %, Standard 15 %) und nochmal bei 5 % – je einmal, bis geladen wird. Keine Meldung beim Verbinden oder Vollladen. Anzeige auf der Bluetooth-Seite (zuerst), Kachel „Maus & Tastatur“ und `/logitech` (API).
 ---
 
 ## 9. Schnittstellen
@@ -259,19 +281,22 @@ Katzen hüpfen bei jeder Animation mit. „Bewegungen reduzieren“ (Windows) sc
 
 | Pfad | Methode | Zweck |
 |---|---|---|
-| `/show` | GET | Eigene Live-Aktivität anzeigen/aktualisieren. Parameter: `id`, `title`, `sub`, `left`, `right`, `detail`, `icon` (Hex-Glyph), `emoji`, `color`, `progress` (0–1), `banner=1`, `width`, `seconds` (als Hinweis) |
+| `/show` | GET | Eigene Live-Aktivität anzeigen/aktualisieren. Parameter: `id`, `title`, `sub`, `left`, `right`, `detail`, `icon` (Hex-Glyph), `emoji`, `color`, `progress` (0–1), `banner=1`, `width`, `seconds` (als Hinweis), `glow` (orbit/halo/shine/ring) |
 | `/hide` | GET | Aktivität `id` entfernen |
 | `/claude` | POST | Claude-Code-Hook-JSON entgegennehmen |
+| `/claude-limits` | POST | Statuszeilen-JSON von Claude Code (Nutzungs-Limits) |
+| `/logitech` | GET | Akku von Logitech-Maus/-Tastatur groß zeigen |
 
 Beispiel: `http://localhost:7843/show?id=fussball&title=FCB%202:1%20BVB&right=67'&emoji=⚽`
 
 ### 9.2 Externe Dienste (nur wenn eingerichtet)
-Spotify Web API · Discord RPC (lokal) · Microsoft Graph (To Do, Gerätecode-Anmeldung) · Google Gemini · Open-Meteo (Wetter + Geocoding) · iCal-Adressen des Nutzers.
+Spotify Web API · Discord RPC (lokal) · Microsoft Graph (To Do, Gerätecode-Anmeldung) · KI-Anbieter (Gemini, OpenAI, xAI, Anthropic, Mistral, DeepSeek, OpenRouter) · Open-Meteo (Wetter + Geocoding) · iCal-Adressen des Nutzers.
 
 ---
 
 ## 10. Einstellungen
 
+- **Suche** oben in der Seitenleiste (Strg+F, Esc leert, Enter öffnet den ersten Treffer): durchsucht Seitennamen und alle Texte der Seiten (Überschriften, Schalter, Hinweise; Umlaute egal). Treffer zeigen die Seite mit bis zu 3 Fundstellen; Antippen öffnet die Seite und hebt die Stelle kurz blau hervor. Lokale API: `/settings?page=…&q=…`.
 Gespeichert in `%APPDATA%\DynamicIsland\einstellungen.json`. Gruppen (Auswahl):
 
 | Gruppe | Schlüssel |
@@ -360,7 +385,7 @@ DynamicIsland/
 
 ## 14. Bekannte Einschränkungen & offene Punkte
 
-- **Release-EXE** auf GitHub fehlt noch (eigenständig, ohne .NET-Installation).
+- **Windows-Mitteilungen** mitlesen braucht die Freigabe von Windows; ohne sie gibt es auch kein App-Logo und keine Anruf-Knöpfe.
 - **Eine Island pro Bildschirm** ist nicht umgesetzt (derzeit eine Island, frei auf jeden Bildschirm verschiebbar).
 - **Tokens** für Spotify/Discord sollten wie die übrigen Zugangsdaten mit DPAPI verschlüsselt werden.
 - **WhatsApp-Antworten** öffnen den Chat über die Suche – bei ähnlichen Namen kann der erste Treffer falsch sein (deshalb „direkt absenden“ abschaltbar).
