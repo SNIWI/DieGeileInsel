@@ -326,7 +326,8 @@ flowchart LR
 - Seite im Discord-Look:
   - Kopf: Discord-Logo, grünes „Sprachverbindung“ / „Anruf verbunden“ mit Dauer, Kanalname
   - Steuerung rechts im Kopf: Mikro, Ton aus, Stream beenden (dunkelgraue Kreise, rot wenn aus), Auflegen als rote Kapsel
-  - Teilnehmer als dunkle Kacheln (Avatar mittig, Name unten links in dunkler Kapsel), grüner Rahmen beim Sprechen, rotes Abzeichen bei stumm/Ton aus
+  - Teilnehmer als dunkle Kacheln (Avatar mittig, Name unten links in dunkler Kapsel), rotes Abzeichen bei stumm/Ton aus
+  - Sprechen: groß nur grüner Rahmen um die Kachel, klein (Pille) nur grüner Ring ums Profilbild
   - Kacheln werden mit mehr Teilnehmern kleiner (bis 4 / 8 / mehr)
 - „Stream beenden“ per UI Automation im Discord-Fenster (RPC kann das nicht)
 
