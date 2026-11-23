@@ -117,8 +117,8 @@ namespace DynamicIsland
 
         public override FrameworkElement BuildExpanded()
         {
-            var root = new StackPanel { Margin = new Thickness(20, 16, 20, 12) };
-            root.Children.Add(Ui.Row3(Ui.Text("Kurzbefehle", 15.5, Ui.White), null, Ui.Link("Bearbeiten", host.OpenSetup), new Thickness(0)));
+            var root = new StackPanel { Margin = Ui.PageMargin };
+            root.Children.Add(Ui.PageHead("Kurzbefehle", null, ("\uE70F", "Bearbeiten", () => host.OpenSetup())));
 
             if (Items.Count == 0)
             {
@@ -136,7 +136,7 @@ namespace DynamicIsland
                 var icon = Shortcuts.Icon(sc, 48);
                 icon.HorizontalAlignment = HorizontalAlignment.Center;
                 cell.Children.Add(icon);
-                var t = Ui.Text(sc.Name, 11, Ui.Dim, false);
+                var t = Ui.Text(sc.Name, 11, Ui.Soft, false);
                 t.HorizontalAlignment = HorizontalAlignment.Center;
                 t.Margin = new Thickness(2, 5, 2, 0);
                 t.MaxWidth = 76;
@@ -179,10 +179,10 @@ namespace DynamicIsland
 
         public override FrameworkElement BuildExpanded()
         {
-            var root = new StackPanel { Margin = new Thickness(20, 16, 20, 12) };
-            root.Children.Add(Ui.Row3(Ui.Text("Downloads", 15.5, Ui.White), null, Ui.Link("Ordner öffnen", host.OpenDownloadsFolder), new Thickness(0)));
+            var root = new StackPanel { Margin = Ui.PageMargin };
+            root.Children.Add(Ui.PageHead("Downloads", files.Count > 0 ? "Neueste Dateien" : null, ("\uE838", "Ordner öffnen", host.OpenDownloadsFolder)));
 
-            var list = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            var list = new StackPanel();
             if (files.Count == 0)
             {
                 var empty = Ui.Text("Noch keine Dateien im Downloads-Ordner", 12.5, Ui.Dim, false);
@@ -211,7 +211,7 @@ namespace DynamicIsland
                 row.MouseLeftButtonUp += (o, e) => { e.Handled = true; host.OpenFile(fi.FullName); };
                 list.Children.Add(row);
             }
-            root.Children.Add(list);
+            root.Children.Add(files.Count > 0 ? Ui.Group(list, new Thickness(4)) : (UIElement)list);   // Liste als Karte wie in iOS
             return root;
         }
     }
@@ -259,10 +259,8 @@ namespace DynamicIsland
 
         public override FrameworkElement BuildExpanded()
         {
-            var root = new StackPanel { Margin = new Thickness(22, 16, 22, 12) };
-            root.Children.Add(Ui.Row3(Ui.Text("Ton", 16, Ui.White), null,
-                Ui.HStack(16, Ui.Link("Mixer", () => IslandWindow.Open("ms-settings:apps-volume")),
-                              Ui.Link("Einstellungen", () => IslandWindow.Open("ms-settings:sound"))), new Thickness(0)));
+            var root = new StackPanel { Margin = Ui.PageMargin };
+            root.Children.Add(Ui.PageHead("Ton", null, ("\uE9E9", "Lautstärkemixer", () => IslandWindow.Open("ms-settings:apps-volume")), ("\uE713", "Sound-Einstellungen", () => IslandWindow.Open("ms-settings:sound"))));
 
             // Lautstärke
             var vg = new Grid { Margin = new Thickness(0, 12, 0, 0) };
@@ -435,11 +433,10 @@ namespace DynamicIsland
 
         public override FrameworkElement BuildExpanded()
         {
-            var root = new StackPanel { Margin = new Thickness(20, 16, 20, 10) };
-            root.Children.Add(Ui.Row3(Ui.Text("Zwischenablage", 15.5, Ui.White), null,
-                host.ClipHistory.Count > 0 ? Ui.Link("Leeren", host.ClearClipHistory) : null, new Thickness(0)));
+            var root = new StackPanel { Margin = Ui.PageMargin };
+            root.Children.Add(Ui.PageHead("Zwischenablage", host.ClipHistory.Count > 0 ? host.ClipHistory.Count + " Einträge" : null, ("\uE74D", "Leeren", host.ClipHistory.Count > 0 ? host.ClearClipHistory : (Action)null)));
 
-            var list = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            var list = new StackPanel();
             if (host.ClipHistory.Count == 0)
             {
                 var empty = Ui.Text("Noch nichts kopiert", 12.5, Ui.Dim, false);
@@ -471,7 +468,7 @@ namespace DynamicIsland
                 row.MouseLeftButtonUp += (o, e) => { e.Handled = true; host.UseClip(item, true); };
                 list.Children.Add(row);
             }
-            root.Children.Add(list);
+            root.Children.Add(host.ClipHistory.Count > 0 ? Ui.Group(list, new Thickness(4)) : (UIElement)list);
             return root;
         }
     }
@@ -502,8 +499,8 @@ namespace DynamicIsland
 
         public override FrameworkElement BuildExpanded()
         {
-            var root = new StackPanel { Margin = new Thickness(20, 16, 20, 10) };
-            root.Children.Add(Ui.Row3(Ui.Text("Offene Apps", 15.5, Ui.White), null, Ui.Text("Strg + Alt + A", 11.5, Ui.Dim, false), new Thickness(0)));
+            var root = new StackPanel { Margin = Ui.PageMargin };
+            root.Children.Add(Ui.PageHead("Offene Apps", "Strg + Alt + A"));
             var wp = new WrapPanel { Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
             if (windows.Count == 0) wp.Children.Add(Ui.Text("Keine offenen Fenster", 12.5, Ui.Dim, false));
             foreach (var w in windows)
@@ -522,7 +519,7 @@ namespace DynamicIsland
                 var scale = new ScaleTransform(1, 1);
                 tile.RenderTransformOrigin = new Point(0.5, 0.5);
                 tile.RenderTransform = scale;
-                var lbl = Ui.Text(win.Title, 11, Ui.Dim, false);
+                var lbl = Ui.Text(win.Title, 11, Ui.Soft, false);
                 lbl.HorizontalAlignment = HorizontalAlignment.Center;
                 lbl.Margin = new Thickness(4, 5, 4, 0);
                 lbl.MaxWidth = 94;
@@ -574,9 +571,8 @@ namespace DynamicIsland
 
         public override FrameworkElement BuildExpanded()
         {
-            var root = new StackPanel { Margin = new Thickness(20, 16, 20, 10) };
-            root.Children.Add(Ui.Row3(Ui.Text("Helligkeit", 15.5, Ui.White), null,
-                Ui.Link("Nachtmodus", () => IslandWindow.Open("ms-settings:nightlight")), new Thickness(0)));
+            var root = new StackPanel { Margin = Ui.PageMargin };
+            root.Children.Add(Ui.PageHead("Helligkeit", null, ("\uE708", "Nachtmodus", () => IslandWindow.Open("ms-settings:nightlight"))));
 
             if (displays == null)
             {

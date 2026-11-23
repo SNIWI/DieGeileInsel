@@ -46,26 +46,26 @@ namespace DynamicIsland
         {
             shownKey = StateKey();
             var todo = host.Todo;
-            var root = new Grid { Margin = new Thickness(22, 14, 22, 12) };
+            var root = new Grid { Margin = Ui.PageMargin };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // Kopf
-            var title = Ui.Text(todo.MainList?.Name ?? "Aufgaben", 17, Ui.White);
+            var title = Ui.Text(todo.MainList?.Name ?? "Aufgaben", 19, Ui.White);
             title.TextTrimming = TextTrimming.CharacterEllipsis;
             int n = todo.Tasks.Count;
-            var count = Ui.Text(n == 0 ? "" : n.ToString(), 17, Ui.Dim, false);
+            var count = Ui.Text(n == 0 ? "" : n.ToString(), 19, Ui.Soft, false);
             count.Margin = new Thickness(8, 0, 0, 0);
-            var refresh = Ui.RoundButton("", 12.5, () => { _ = todo.RefreshAsync(); }, 28, Brushes.Transparent, Ui.Dim);
+            var refresh = Ui.CircleButton("", () => { _ = todo.RefreshAsync(); }, 30);
             refresh.ToolTip = "Aktualisieren";
-            var open = Ui.RoundButton("", 12.5, () => IslandWindow.Open("https://to-do.live.com/tasks/"), 28, Brushes.Transparent, Ui.Dim);
+            var open = Ui.CircleButton("", () => IslandWindow.Open("https://to-do.live.com/tasks/"), 30);
             open.ToolTip = "In Microsoft To Do öffnen";
-            var head = new Grid { Height = 28 };
+            var head = new Grid { Height = 32 };
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var left = Ui.HStack(0, title, count);
-            var btns = Ui.HStack(2, refresh, open);
+            var btns = Ui.HStack(8, refresh, open);
             Grid.SetColumn(btns, 1);
             head.Children.Add(left);
             head.Children.Add(btns);

@@ -87,9 +87,8 @@ namespace DynamicIsland
         {
             live.Clear();
             var cfg = Cfg;
-            var root = new StackPanel { Margin = new Thickness(22, 12, 22, 6) };
-            root.Children.Add(Ui.Row3(Ui.Text(cfg?.Name ?? "Widgets", 14, Ui.White), null,
-                Ui.Link("Bearbeiten", () => host.OpenSetup("pages"), 12.5), new Thickness(2, 0, 2, 8)));
+            var root = new StackPanel { Margin = Ui.PageMargin };
+            root.Children.Add(Ui.PageHead(cfg?.Name ?? "Widgets", null, ("\uE70F", "Bearbeiten", () => host.OpenSetup("pages"))));
 
             var keys = cfg?.Widgets ?? new List<string>();
             if (keys.Count == 0)

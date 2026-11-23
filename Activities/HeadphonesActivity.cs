@@ -47,7 +47,7 @@ namespace DynamicIsland
         {
             var d = Dev;
             shownKey = Key;
-            var root = new StackPanel { Margin = new Thickness(22, 16, 22, 12) };
+            var root = new StackPanel { Margin = Ui.PageMargin };
 
             // ---------- Apple-Stil: großer Akku-Ring links, Name + Status + Ton-Knopf rechts ----------
             int? bat = d?.Battery;

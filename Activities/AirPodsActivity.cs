@@ -70,7 +70,7 @@ namespace DynamicIsland
             var eng = host.AirPods;
             var aap = eng?.Aap;
             var s = host.Settings;
-            var root = new StackPanel { Margin = new Thickness(22, 16, 22, 12) };
+            var root = new StackPanel { Margin = Ui.PageMargin };
 
             // ---------- Kopfzeile: Name + Status, rechts zwei runde Knöpfe ----------
             var title = Ui.Text(st?.Model ?? "AirPods", 17, Ui.White);

@@ -45,10 +45,10 @@ namespace DynamicIsland
             {
                 // nur Termine (Wetter hat eine eigene Seite)
                 var only = CalendarColumn();
-                only.Margin = new Thickness(22, 14, 22, 10);
+                only.Margin = Ui.PageMargin;
                 return only;
             }
-            var grid = new Grid { Margin = new Thickness(20, 14, 20, 10) };
+            var grid = new Grid { Margin = Ui.PageMargin };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -117,16 +117,16 @@ namespace DynamicIsland
             var cal = host.Calendar;
             var root = new StackPanel();
 
-            var today = Ui.Text(DateTime.Now.ToString("dddd, d. MMMM", Ui.De), clean ? 13 : 12, Ui.Br(Ui.Red));
-            var title = Ui.Text("Termine", clean ? 20 : 17, Ui.White);
+            var today = Ui.Text(DateTime.Now.ToString("dddd, d. MMMM", Ui.De), clean ? 13 : 12, Ui.Soft, false);
+            var title = Ui.Text("Termine", clean ? 19 : 17, Ui.White);
             var head = new Grid();
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var refresh = Ui.RoundButton("", 12.5, () => { _ = cal.RefreshAsync(); }, 28, Brushes.Transparent, Ui.Dim);
+            var refresh = Ui.CircleButton("", () => { _ = cal.RefreshAsync(); }, 30);
             refresh.ToolTip = "Aktualisieren";
-            var set = Ui.RoundButton("", 12.5, () => host.OpenSetup("calendar"), 28, Brushes.Transparent, Ui.Dim);
+            var set = Ui.CircleButton("", () => host.OpenSetup("calendar"), 30);
             set.ToolTip = "Kalender-Einstellungen";
-            var btns = Ui.HStack(2, refresh, set);
+            var btns = Ui.HStack(8, refresh, set);
             btns.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(btns, 1);
             head.Children.Add(Ui.VStack(0, today, title));

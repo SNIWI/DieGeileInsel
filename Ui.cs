@@ -236,6 +236,53 @@ namespace DynamicIsland
             catch (Exception ex) { Program.Log(ex); }
         }
 
+        // ---------- Seiten im Stil der Übersicht (Sperrbildschirm) ----------
+        /// <summary>Einheitlicher Rand aller Seiten der großen Island.</summary>
+        public static Thickness PageMargin => new Thickness(26, 10, 26, 12);
+        /// <summary>Gedämpfte Schrift wie das Datum auf der Übersicht.</summary>
+        public static readonly SolidColorBrush Soft = Br(Colors.White, 150);
+
+        /// <summary>Kopf einer Seite: kleine Zeile (optional, gedämpft) über dem Titel, rechts runde Knöpfe.</summary>
+        public static Grid PageHead(string title, string sub, params (string glyph, string tip, Action act)[] buttons)
+        {
+            var g = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var left = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            if (!string.IsNullOrEmpty(sub)) left.Children.Add(Text(sub, 12.5, Soft, false));
+            var t = Text(title, 19, White);
+            left.Children.Add(t);
+            g.Children.Add(left);
+            if (buttons != null && buttons.Length > 0)
+            {
+                var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                foreach (var (glyph, tip, act) in buttons)
+                {
+                    if (act == null) continue;
+                    var b = CircleButton(glyph, act, 32);
+                    b.ToolTip = tip;
+                    b.Margin = new Thickness(8, 0, 0, 0);
+                    row.Children.Add(b);
+                }
+                Grid.SetColumn(row, 1);
+                g.Children.Add(row);
+            }
+            return g;
+        }
+
+        /// <summary>Runder Knopf wie die Kacheln der Übersicht (dezent hell hinterlegt).</summary>
+        public static Border CircleButton(string glyph, Action act, double box = 32, Brush fg = null) =>
+            RoundButton(glyph, box * 0.4, act, box, Br(Colors.White, 26), fg ?? White);
+
+        /// <summary>Gruppierte Karte (wie Listen in den iOS-Einstellungen).</summary>
+        public static Border Group(UIElement child, Thickness? pad = null) => new Border
+        {
+            Background = Br(Colors.White, 20),
+            CornerRadius = new CornerRadius(16),
+            Padding = pad ?? new Thickness(12, 6, 10, 6),
+            Child = child
+        };
+
         /// <summary>Runder Button. Klicks werden NICHT an die Island weitergereicht.</summary>
         public static Border RoundButton(string glyph, double iconSize, Action onClick, double box = 36,
                                          Brush bg = null, Brush fg = null, FontFamily font = null)

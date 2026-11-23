@@ -734,119 +734,141 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
         }
         public override FrameworkElement BuildCompact() => new Grid();
 
+        DateTime shownWeather;
+
         public override FrameworkElement BuildExpanded()
         {
-            // oben Uhr + Player, unten die Kachelreihe – dazwischen Luft (wie der iOS-Sperrbildschirm)
-            // Uhr/Player und Kachelreihe als ein Block, senkrecht mittig – unten bleibt Platz für die Seitenpunkte
-            var root = new Grid { Margin = new Thickness(22, 8, 22, 14) };
-            var block = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch };
-            root.Children.Add(block);
+            // Aufbau wie der iPhone-Sperrbildschirm: oben Datum über großer Uhr, rechts ein ruhiges Widget
+            // (läuft Musik: Player, sonst Wetter), unten eine gleichmäßige Reihe runder Knöpfe
+            var cs = host.Settings;
+            var root = new Grid { Margin = new Thickness(26, 10, 26, 12) };
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            // Uhr + Datum links · Mini-Player rechts (CPU/RAM weggelassen – braucht man hier nicht)
-            var top = new Grid();
+            // ---------- oben: Datum + Uhr · Widget ----------
+            var top = new Grid { VerticalAlignment = VerticalAlignment.Center };
             top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var cs = host.Settings;
-            time = Ui.Text("", ClockFormat.Size(cs, 40), Ui.White, true, true);
-            time.FontWeight = ClockFormat.Weight(cs);
-            date = Ui.Text("", 13, Ui.Dim, false);
+            date = Ui.Text("", 13, Ui.Br(Colors.White, 165), false);
             date.TextTrimming = TextTrimming.CharacterEllipsis;
             if (cs.ClockDate == "off" && !(cs.ClockBattery && host.HasBattery)) date.Visibility = Visibility.Collapsed;
-            var left = Ui.VStack(0, time, date);
-            if (!HasPlayer)
-            {
-                // ohne Player steht die Uhr mittig
-                left.HorizontalAlignment = HorizontalAlignment.Center;
-                time.HorizontalAlignment = date.HorizontalAlignment = HorizontalAlignment.Center;
-                time.TextAlignment = date.TextAlignment = TextAlignment.Center;
-            }
+            time = Ui.Text("", ClockFormat.Size(cs, 46), Ui.White, true, true);
+            time.FontWeight = ClockFormat.Weight(cs);
+            time.Margin = new Thickness(-2, -3, 0, 0);
+            var left = Ui.VStack(0, date, time);
+            left.VerticalAlignment = VerticalAlignment.Center;
             miniArt = null; miniTitle = miniArtist = miniPlay = null; miniShownArt = null;
             cpuB = null; ramB = null; cpuT = null; ramT = null; bat = null; batT = null;
-            Grid.SetColumn(left, 0);
             top.Children.Add(left);
-            if (HasPlayer)
+            var widget = HasPlayer ? BuildMiniPlayer() : WeatherGlance();
+            if (widget != null)
             {
-                var right = BuildMiniPlayer();
-                Grid.SetColumn(right, 1);
-                top.Children.Add(right);
+                Grid.SetColumn(widget, 1);
+                top.Children.Add(widget);
             }
-            block.Children.Add(top);
+            else
+            {
+                // nichts daneben: Uhr mittig
+                left.HorizontalAlignment = HorizontalAlignment.Center;
+                time.HorizontalAlignment = date.HorizontalAlignment = HorizontalAlignment.Center;
+                Grid.SetColumnSpan(left, 2);
+            }
+            root.Children.Add(top);
 
-            // Eine Reihe: deine 4 wichtigsten Kacheln + „Mehr“ (alle Funktionen als Menü)
-            var grid = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) };
+            // ---------- unten: runde Knöpfe, gleichmäßig über die ganze Breite ----------
             var row = Tiles();
             row.Add(DashTiles.More);
-            foreach (var t in row)
-            {
-                var tile = t;
-                bool live = tile.Key == "airpods" && (AirPodsLive || PhonesLive);
-                var cell = new StackPanel { Width = 75, Background = Brushes.Transparent, Cursor = Cursors.Hand };
-                var icon = DashTiles.Icon(tile, 50);
-                if (live)
-                {
-                    // verbunden: Akku statt Name, grüner Punkt am Symbol
-                    var dot = new System.Windows.Shapes.Ellipse
-                    {
-                        Width = 10, Height = 10, Fill = Ui.Br(Ui.Green), Stroke = Brushes.Black, StrokeThickness = 1.5,
-                        HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
-                        Margin = new Thickness(0, 3, 3, 0)
-                    };
-                    icon.Child = null;
-                    var glyph = Ui.Glyph("\uE7F6", 19, Ui.White);   // verbunden: Kopfhörer statt Bluetooth-Symbol
-                    var layer = new Grid();
-                    layer.Children.Add(glyph);
-                    layer.Children.Add(dot);
-                    icon.Child = layer;
-                }
-                icon.HorizontalAlignment = HorizontalAlignment.Center;
-                var scale = new ScaleTransform(1, 1);
-                icon.RenderTransformOrigin = new Point(0.5, 0.5);
-                icon.RenderTransform = scale;
-                var lbl = Ui.Text(live ? (AirPodsLive ? AirPodsLabel() : PhonesLabel()) : tile.Label, 11, live ? Ui.White : Ui.Dim, false);
-                lbl.HorizontalAlignment = HorizontalAlignment.Center;
-                lbl.MaxWidth = 73;
-                lbl.Margin = new Thickness(1, 6, 1, 0);
-                cell.Children.Add(icon);
-                cell.Children.Add(lbl);
-                cell.MouseEnter += (s, e) => icon.Background = Ui.Br(Colors.White, 60);
-                bool glass = icon is GlassBorder gb && gb.HasGlass;
-                cell.MouseLeave += (s, e) =>
-                {
-                    icon.Background = Ui.Faint;
-                    (icon as GlassBorder)?.Lift(false);
-                    Ui.Press(scale, 1, 300, new SpringEase());
-                };
-                cell.MouseLeftButtonDown += (s, e) =>
-                {
-                    e.Handled = true;
-                    (icon as GlassBorder)?.Lift(true);
-                    // Glas hebt sich an (iOS 26), sonst leicht eindrücken
-                    Ui.Press(scale, glass ? 1.08 : 0.9, 130, new CubicEase { EasingMode = EasingMode.EaseOut });
-                };
-                cell.MouseLeftButtonUp += (s, e) =>
-                {
-                    e.Handled = true;
-                    (icon as GlassBorder)?.Lift(false);
-                    Ui.Press(scale, 1, 380, new SpringEase());
-                    try { tile.Run(host); } catch (Exception ex) { Program.Log(ex); }
-                };
-                grid.Children.Add(cell);
-            }
-            block.Children.Add(grid);
+            var grid = new System.Windows.Controls.Primitives.UniformGrid { Rows = 1, Columns = row.Count, Margin = new Thickness(-8, 12, -8, 0) };
+            Grid.SetRow(grid, 1);
+            foreach (var t in row) grid.Children.Add(TileCell(t));
+            root.Children.Add(grid);
             Update();
             return root;
+        }
+
+        /// <summary>Ein runder Knopf mit Beschriftung (wie im Kontrollzentrum).</summary>
+        FrameworkElement TileCell(DashTile tile)
+        {
+            bool live = tile.Key == "airpods" && (AirPodsLive || PhonesLive);
+            var cell = new StackPanel { Background = Brushes.Transparent, Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Center };
+            const double size = 48;
+            var icon = DashTiles.Icon(tile, size);
+            icon.CornerRadius = new CornerRadius(size / 2);
+            var idle = live ? Ui.Br(Ui.Green, 50) : Ui.Br(Colors.White, 26);
+            icon.Background = idle;
+            if (live)
+            {
+                // verbunden: Kopfhörer-Symbol auf grünem Grund, Akku statt Name
+                icon.Child = Ui.Glyph("", 19, Ui.Br(Ui.Green));
+            }
+            icon.HorizontalAlignment = HorizontalAlignment.Center;
+            var scale = new ScaleTransform(1, 1);
+            icon.RenderTransformOrigin = new Point(0.5, 0.5);
+            icon.RenderTransform = scale;
+            var lbl = Ui.Text(live ? (AirPodsLive ? AirPodsLabel() : PhonesLabel()) : tile.Label, 11, live ? Ui.White : Ui.Br(Colors.White, 150), false);
+            lbl.HorizontalAlignment = HorizontalAlignment.Center;
+            lbl.TextAlignment = TextAlignment.Center;
+            lbl.MaxWidth = 78;
+            lbl.Margin = new Thickness(1, 7, 1, 0);
+            cell.Children.Add(icon);
+            cell.Children.Add(lbl);
+            cell.MouseEnter += (s, e) => icon.Background = live ? Ui.Br(Ui.Green, 75) : Ui.Br(Colors.White, 48);
+            cell.MouseLeave += (s, e) =>
+            {
+                icon.Background = idle;
+                Ui.Press(scale, 1, 300, new SpringEase());
+            };
+            cell.MouseLeftButtonDown += (s, e) =>
+            {
+                e.Handled = true;
+                Ui.Press(scale, 0.9, 130, new CubicEase { EasingMode = EasingMode.EaseOut });
+            };
+            cell.MouseLeftButtonUp += (s, e) =>
+            {
+                e.Handled = true;
+                Ui.Press(scale, 1, 380, new SpringEase());
+                try { tile.Run(host); } catch (Exception ex) { Program.Log(ex); }
+            };
+            return cell;
+        }
+
+        /// <summary>Wetter rechts neben der Uhr: farbiges Symbol, Temperatur, Beschreibung (antippen: Wetter-Seite).</summary>
+        FrameworkElement WeatherGlance()
+        {
+            var w = host.Weather;
+            shownWeather = w?.LastUpdate ?? default;
+            if (w == null || !w.HasData || !host.Settings.WeatherEnabled) return null;
+            var today = w.Days.FirstOrDefault();
+            var temp = Ui.Text(WeatherService.Deg(w.Temp), 30, Ui.White, false);
+            temp.FontWeight = FontWeights.Light;
+            temp.HorizontalAlignment = HorizontalAlignment.Right;
+            var desc = Ui.Text(WeatherService.Text(w.Code) + (today != null ? $" · {WeatherService.Deg(today.Max)} / {WeatherService.Deg(today.Min)}" : ""), 12, Ui.Br(Colors.White, 150), false);
+            desc.HorizontalAlignment = HorizontalAlignment.Right;
+            // Symbol direkt neben der Temperatur, Beschreibung darunter – alles rechtsbündig
+            var icon = WeatherIcon.Create(w.Code, w.IsDay, 30);
+            icon.Margin = new Thickness(0, 0, 8, 0);
+            var line = Ui.HStack(0, icon, temp);
+            line.HorizontalAlignment = HorizontalAlignment.Right;
+            var box = Ui.VStack(2, line, desc);
+            box.Background = Brushes.Transparent;
+            box.Cursor = Cursors.Hand;
+            box.VerticalAlignment = VerticalAlignment.Center;
+            box.ToolTip = w.Place;
+            box.MouseLeftButtonDown += (s, e) => e.Handled = true;
+            box.MouseLeftButtonUp += (s, e) => { e.Handled = true; host.ShowWeather(); };
+            return box;
         }
 
         /// <summary>Schlichter Player in der Übersicht – immer erreichbar, solange etwas läuft oder pausiert ist.</summary>
         FrameworkElement BuildMiniPlayer()
         {
             var m = host.Media;
-            var box = new Border { Background = Ui.Br(Colors.White, 22), CornerRadius = new CornerRadius(14), Height = 56, Width = 220, VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(8, 0, 6, 0) };
-            var art = Ui.ArtBox(40, 9, out miniArt);
+            var box = new Border { Background = Ui.Br(Colors.White, 20), CornerRadius = new CornerRadius(16), Height = 60, Width = 236, VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(9, 0, 6, 0) };
+            var art = Ui.ArtBox(42, 10, out miniArt);
             miniTitle = Ui.Text("", 13, Ui.White);
-            miniArtist = Ui.Text("", 11.5, Ui.Dim, false);
+            miniArtist = Ui.Text("", 11.5, Ui.Br(Colors.White, 150), false);
             var texts = Ui.VStack(1, miniTitle, miniArtist);
-            texts.Margin = new Thickness(10, 0, 8, 0);
+            texts.Margin = new Thickness(10, 0, 6, 0);
             var info = new Grid { Background = Brushes.Transparent, Cursor = Cursors.Hand, ToolTip = "Player öffnen" };
             info.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             info.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -855,16 +877,16 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             info.Children.Add(texts);
             info.MouseLeftButtonDown += (s, e) => e.Handled = true;
             info.MouseLeftButtonUp += (s, e) => { e.Handled = true; host.ShowPlayer(); };
-            var prev = Ui.RoundButton("\uE892", 14, m.Previous, 34, Brushes.Transparent);
-            var play = Ui.RoundButton("\uE768", 17, m.PlayPause, 38, Brushes.Transparent);
+            var play = Ui.RoundButton("", 16, m.PlayPause, 34, Brushes.Transparent);
             miniPlay = (TextBlock)play.Child;
-            var next = Ui.RoundButton("\uE893", 14, m.Next, 34, Brushes.Transparent);
-            // Titel bekommt nur den Platz, der übrig ist – die drei Knöpfe bleiben immer sichtbar
+            var next = Ui.RoundButton("", 13, m.Next, 30, Brushes.Transparent);
+            // Titel bekommt nur den Platz, der übrig ist – die Knöpfe bleiben immer sichtbar
             miniTitle.TextTrimming = miniArtist.TextTrimming = TextTrimming.CharacterEllipsis;
             var row = new Grid();
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var btns = Ui.HStack(0, prev, play, next);
+            var btns = Ui.HStack(0, play, next);
+            btns.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(btns, 1);
             row.Children.Add(info);
             row.Children.Add(btns);
@@ -908,6 +930,8 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             if (cs.ClockBattery && host.HasBattery && host.BatteryPct >= 0)
                 date.Text += (date.Text.Length > 0 ? "  ·  " : "") + $"{host.BatteryPct} %{(host.OnAc ? " ⚡" : "")}";
             UpdateMini();
+            // neues Wetter: Widget neben der Uhr auffrischen
+            if (!HasPlayer && host.Weather != null && host.Weather.HasData && host.Weather.LastUpdate != shownWeather) host.Rebuild(this);
         }
     }
 

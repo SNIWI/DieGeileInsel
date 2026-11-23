@@ -70,7 +70,7 @@ namespace DynamicIsland
         // =================================================================
         public override FrameworkElement BuildExpanded()
         {
-            var root = new Grid { Margin = new Thickness(22, 12, 22, 12) };
+            var root = new Grid { Margin = Ui.PageMargin };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // Kopf
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });  // Inhalt
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });                       // Eingabe
@@ -97,14 +97,14 @@ namespace DynamicIsland
 
         FrameworkElement Head(string title, FrameworkElement right)
         {
-            var t = Ui.Text(title, 14.5, Ui.White);
+            var t = Ui.Text(title, 18, Ui.White);
             t.TextTrimming = TextTrimming.CharacterEllipsis;
             t.Margin = new Thickness(8, 0, 10, 0);
-            var g = new Grid { Height = 28 };
+            var g = new Grid { Height = 32, Margin = new Thickness(0, 0, 0, 4) };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var spark = SparkGlyph(15);
+            var spark = SparkGlyph(17);
             Grid.SetColumn(t, 1);
             g.Children.Add(spark);
             g.Children.Add(t);
@@ -119,7 +119,8 @@ namespace DynamicIsland
 
         static Border Icon(string glyph, string tip, Action click)
         {
-            var b = Ui.RoundButton(glyph, 12.5, click, 28, Brushes.Transparent, Ui.Dim);
+            var b = Ui.CircleButton(glyph, click, 30);   // runde Knöpfe wie auf der Übersicht
+            b.Margin = new Thickness(6, 0, 0, 0);
             b.ToolTip = tip;
             return b;
         }

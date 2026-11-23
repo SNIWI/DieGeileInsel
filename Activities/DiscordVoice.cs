@@ -108,7 +108,7 @@ namespace DynamicIsland
         double RowH => AvatarSize + 31;
         int PerRow => Math.Max(1, (int)(InnerW / CellW));
         int Rows => Count == 0 ? 1 : (Count + PerRow - 1) / PerRow;
-        public override Size ExpandedSize => new Size(420, 84 + Rows * RowH);
+        public override Size ExpandedSize => new Size(420, Math.Max(240, 80 + TileRows * (TileH + 6) * 1.25));
 
         public override FrameworkElement BuildCompact()
         {
@@ -144,85 +144,138 @@ namespace DynamicIsland
             return g;
         }
 
+        // ---------- Discord-Look ----------
+        static readonly SolidColorBrush DcTile = Ui.Br(Color.FromRgb(0x23, 0x24, 0x28));
+        static readonly SolidColorBrush DcButton = Ui.Br(Color.FromRgb(0x2B, 0x2D, 0x31));
+        static readonly SolidColorBrush DcGreen = Ui.Br(Color.FromRgb(0x23, 0xA5, 0x5A));
+        static readonly SolidColorBrush DcRed = Ui.Br(Color.FromRgb(0xDA, 0x37, 0x3C));
+        readonly List<KeyValuePair<string, Border>> tiles = new List<KeyValuePair<string, Border>>();
+
+        // Kacheln wie im Discord-Anruf: je mehr Leute, desto kleiner
+        int Cols => Count <= 4 ? Math.Max(1, Count) : Count <= 8 ? 4 : 6;
+        int TileRows => Count == 0 ? 1 : (Count + Cols - 1) / Cols;
+        double TileH => Count <= 4 ? 92 : Count <= 8 ? 60 : 50;
+
         public override FrameworkElement BuildExpanded()
         {
             rings.Clear();
             names.Clear();
             badges.Clear();
+            tiles.Clear();
             builtFor = Signature;
-            var root = new StackPanel { Margin = new Thickness(22, 16, 22, 12) };
+            var root = new Grid { Margin = Ui.PageMargin };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            // Kopfzeile: Kanal links, Steuerung rechts – alles auf einen Blick
-            var circle = new Border
-            {
-                Width = 40,
-                Height = 40,
-                CornerRadius = new CornerRadius(20),
-                Background = BlurpleBrush,
-                Child = Ui.Glyph(Ch != null && Ch.IsCall ? "\uE717" : "\uE720", 17, Ui.White)
-            };
-            var title = Ui.Text(Ch?.Name ?? "Discord", 15, Ui.White);
+            // ---------- Kopf: „Sprachverbindung“ in Grün wie im Discord-Panel ----------
+            var head = new Grid();
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var signal = Ui.Glyph("", 13, DcGreen);   // Funk-/Verbindungssymbol
+            var status = Ui.Text(Ch != null && Ch.IsCall ? "Anruf verbunden" : "Sprachverbindung", 13, DcGreen);
+            var dlogo = Logos.Discord(15);
+            dlogo.Margin = new Thickness(0, 0, 2, 0);
+            eSub = Ui.Text("", 12, Ui.Soft, false);
+            var line1 = Ui.HStack(6, dlogo, signal, status, eSub);
+            var title = Ui.Text(Ch?.Name ?? "Discord", 17, Ui.White);
             title.TextTrimming = TextTrimming.CharacterEllipsis;
-            eSub = Ui.Text("", 12, Ui.Dim, false);
-            var texts = Ui.VStack(1, title, eSub);
-            texts.Margin = new Thickness(11, 0, 10, 0);
-            texts.VerticalAlignment = VerticalAlignment.Center;
+            var left = Ui.VStack(1, line1, title);
+            left.Margin = new Thickness(0, 0, 10, 0);
+            head.Children.Add(left);
+            root.Children.Add(head);
 
-            muteBtn = Ui.RoundButton("\uE720", 15, d.ToggleMute, 36);
-            muteBtn.ToolTip = "Mikrofon stumm (Strg + Alt + M)";
-            deafBtn = Ui.RoundButton("\uE7F6", 15, d.ToggleDeaf, 36);
-            deafBtn.ToolTip = "Ton aus";
-            var leave = Ui.RoundButton("\uE778", 15, d.Leave, 36, RedBrush);
-            leave.ToolTip = "Verlassen";
-            var buttons = Ui.HStack(8, muteBtn, deafBtn, leave);
-            if (StopStream != null)
-            {
-                var stream = Ui.RoundButton("", 15, StopStream, 36);
-                stream.ToolTip = "Stream beenden (Go Live)";
-                buttons.Children.Insert(2, stream);
-            }
-            root.Children.Add(Ui.Row3(circle, texts, buttons, new Thickness(0)));
-
-            // Trennlinie wie in iOS-Listen
-            root.Children.Add(new Border { Height = 1, Background = Ui.Br(Colors.White, 26), Margin = new Thickness(0, 12, 0, 6) });
-
-            var grid = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center };
+            // ---------- Teilnehmer als Kacheln ----------
+            FrameworkElement body;
             if (Ch != null && Count > 0)
             {
-                double av = AvatarSize, cw = CellW;
+                var grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = Cols, Margin = new Thickness(-3, 10, -3, 0) };
+                double av = Count <= 4 ? 46 : Count <= 8 ? 32 : 26;
                 foreach (var m in Ch.Members)
                 {
-                    var face = WebAvatar.Circle(m.AvatarUrl, av, out var ring, av >= 44 ? 2.5 : 2);
-                    rings.Add(new KeyValuePair<string, Border>(m.Id, ring));
-                    var holder = new Grid { HorizontalAlignment = HorizontalAlignment.Center };
-                    holder.Children.Add(face);
+                    // groß: nur die Kachel bekommt den grünen Rand, das Profilbild keinen Ring
+                    var face = WebAvatar.Circle(m.AvatarUrl, av, out _, 0);
+                    face.HorizontalAlignment = HorizontalAlignment.Center;
+                    face.VerticalAlignment = VerticalAlignment.Center;
+                    face.Margin = new Thickness(0, 0, 0, Count <= 8 ? 14 : 12);
                     var badge = Badge();
+                    badge.Margin = new Thickness(0, 6, 6, 0);
+                    badge.VerticalAlignment = VerticalAlignment.Top;
                     badges.Add(new KeyValuePair<string, Border>(m.Id, badge));
-                    holder.Children.Add(badge);
 
-                    var name = Ui.Text(m.Id == d.SelfId ? "Du" : m.Name, av >= 44 ? 11.5 : 10.5, Ui.Dim, false);
+                    // Name unten links in einer dunklen Kapsel (wie in Discord)
+                    var name = Ui.Text(m.Id == d.SelfId ? "Du" : m.Name, Count <= 8 ? 11 : 10, Ui.White, true);
                     name.TextTrimming = TextTrimming.CharacterEllipsis;
-                    name.TextAlignment = TextAlignment.Center;
-                    name.HorizontalAlignment = HorizontalAlignment.Center;
-                    name.MaxWidth = cw - 6;
-                    name.Margin = new Thickness(0, 4, 0, 0);
                     names.Add(new KeyValuePair<string, TextBlock>(m.Id, name));
-
-                    var cell = new StackPanel { Width = cw, Height = RowH, ToolTip = m.Name };
-                    cell.Children.Add(holder);
-                    cell.Children.Add(name);
-                    grid.Children.Add(cell);
+                    var pill = new Border
+                    {
+                        Background = Ui.Br(Colors.Black, 150),
+                        CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(6, 1, 6, 2),
+                        Margin = new Thickness(6, 0, 6, 6),
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        VerticalAlignment = VerticalAlignment.Bottom,
+                        Child = name
+                    };
+                    var inner = new Grid();
+                    inner.Children.Add(face);
+                    inner.Children.Add(badge);
+                    inner.Children.Add(pill);
+                    var tile = new Border
+                    {
+                        Height = TileH,
+                        Margin = new Thickness(3),
+                        CornerRadius = new CornerRadius(12),
+                        Background = DcTile,
+                        BorderThickness = new Thickness(2),
+                        BorderBrush = Brushes.Transparent,
+                        ClipToBounds = true,
+                        Child = inner,
+                        ToolTip = m.Name
+                    };
+                    tiles.Add(new KeyValuePair<string, Border>(m.Id, tile));
+                    grid.Children.Add(tile);
                 }
+                body = grid;
             }
             else
             {
-                var empty = Ui.Text("Noch niemand im Kanal", 13, Ui.Dim, false);
-                empty.Margin = new Thickness(0, 24, 0, 0);
-                grid.Children.Add(empty);
+                var empty = Ui.Text("Noch niemand im Kanal", 13, Ui.Soft, false);
+                empty.HorizontalAlignment = HorizontalAlignment.Center;
+                empty.VerticalAlignment = VerticalAlignment.Center;
+                body = empty;
             }
-            root.Children.Add(grid);
+            Grid.SetRow(body, 1);
+            root.Children.Add(body);
+
+            // ---------- Steuerleiste unten, mittig ----------
+            muteBtn = DcRound("", d.ToggleMute, "Mikrofon stumm (Strg + Alt + M)");
+            deafBtn = DcRound("", d.ToggleDeaf, "Ton aus");
+            var bar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            bar.Children.Add(muteBtn);
+            bar.Children.Add(deafBtn);
+            if (StopStream != null) bar.Children.Add(DcRound("", StopStream, "Stream beenden (Go Live)"));
+            // Auflegen: breite rote Kapsel
+            var leave = Ui.RoundButton("", 15, d.Leave, 38, DcRed, Ui.White);
+            leave.Width = 52;
+            leave.CornerRadius = new CornerRadius(17);
+            leave.Margin = new Thickness(0);
+            leave.ToolTip = "Verlassen";
+            bar.Children.Add(leave);
+            // Steuerung rechts im Kopf – so bleibt für die Kacheln genug Höhe
+            bar.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(bar, 1);
+            head.Children.Add(bar);
             Update();
             return root;
+        }
+
+        static Border DcRound(string glyph, Action act, string tip)
+        {
+            var b = Ui.RoundButton(glyph, 14, act, 34, DcButton, Ui.White);
+            b.Margin = new Thickness(0, 0, 8, 0);
+            b.ToolTip = tip;
+            return b;
         }
 
         /// <summary>Kleines rundes Abzeichen unten rechts am Profilbild: stumm oder Ton aus.</summary>
@@ -289,12 +342,18 @@ namespace DynamicIsland
             foreach (var kv in names)
             {
                 var m = ch.Members.Find(x => x.Id == kv.Key);
-                kv.Value.Foreground = m != null && m.Speaking ? Ui.White : Ui.Dim;
+                kv.Value.Foreground = m != null && m.Speaking ? Ui.White : Ui.Br(Colors.White, 200);
             }
             if (eSub != null)
-                eSub.Text = (Count == 1 ? "1 Person" : Count + " Personen") + " · " + Ui.Fmt(DateTime.Now - ch.JoinedAt);
-            if (muteBtn != null) muteBtn.Background = d.MicOff ? RedBrush : Ui.GlassFill;   // „Ton aus“ schaltet das Mikro mit aus
-            if (deafBtn != null) deafBtn.Background = d.SelfDeaf ? RedBrush : Ui.GlassFill;
+                eSub.Text = "· " + Ui.Fmt(DateTime.Now - ch.JoinedAt);
+            if (muteBtn != null) muteBtn.Background = d.MicOff ? DcRed : DcButton;   // „Ton aus“ schaltet das Mikro mit aus
+            if (deafBtn != null) deafBtn.Background = d.SelfDeaf ? DcRed : DcButton;
+            // sprechende Person: grüner Rahmen um die Kachel (wie in Discord)
+            foreach (var kv in tiles)
+            {
+                var m = ch.Members.Find(x => x.Id == kv.Key);
+                kv.Value.BorderBrush = m != null && m.Speaking ? DcGreen : Brushes.Transparent;
+            }
         }
     }
 }

@@ -2,7 +2,7 @@
 
 - **Produkt:** Dynamic Island für den Windows-Desktop
 - **Version:** 1.3.0
-- **Stand:** 22.11.2026
+- **Stand:** 23.11.2026
 - **Sprache der App:** Deutsch
 - **Plattform:** Windows 10 (19041+) und Windows 11, x64
 
@@ -193,7 +193,7 @@ flowchart LR
 - Reihenfolge und Auswahl: Einstellungen → Seiten & Widgets
 - Laufende Aktivitäten (Timer, Claude, Discord …) automatisch hinter Übersicht/Player
 - Schlüssel:
-  - `dashboard` – Übersicht: Uhr, Datum mit Wochentag, CPU/RAM/Akku, Kacheln (bis 12), Mini-Player
+  - `dashboard` – Übersicht im Sperrbildschirm-Stil: Datum über großer Uhr, rechts Player (wenn Musik läuft) oder Wetter, unten runde Knöpfe gleichmäßig über die Breite
   - `weather` – Wetter: jetzt, Stunden mit Tagesname, Tage (nur „Ausführlich“)
   - `calendar` – Kalender: nächste Termine, optional Wetter links
   - `todo` – Microsoft To Do
@@ -218,7 +218,13 @@ flowchart LR
   - Kalender: größere Termine, max. 3
   - Bluetooth: größere Kacheln, ohne Linkzeile
 
-### 7.3 Navigation
+### 7.3 Einheitliches Design
+
+- Alle Seiten im Stil der Übersicht: gleicher Rand (`Ui.PageMargin`), gedämpfte Schrift (`Ui.Soft`)
+- Kopf (`Ui.PageHead`): optionale kleine Zeile über dem Titel (19 pt), rechts runde Knöpfe (`Ui.CircleButton`) statt Text-Links
+- Listen (Downloads, Zwischenablage) als gruppierte Karte (`Ui.Group`)
+
+### 7.4 Navigation
 
 - **Seitensymbole** oben: Symbol 13 px, Feld 21 px hoch; farbig oder alle weiß
 - Claude und Discord mit eigenen gezeichneten Logos
@@ -317,7 +323,11 @@ flowchart LR
 ### 8.7 Discord
 
 - RPC über Named Pipe (`discord-ipc-N`) mit eigener Anwendung (Client-ID/Secret)
-- Sprachkanal mit Teilnehmern, Sprech-Ringen, Stumm/Ton aus
+- Seite im Discord-Look:
+  - Kopf: Discord-Logo, grünes „Sprachverbindung“ / „Anruf verbunden“ mit Dauer, Kanalname
+  - Steuerung rechts im Kopf: Mikro, Ton aus, Stream beenden (dunkelgraue Kreise, rot wenn aus), Auflegen als rote Kapsel
+  - Teilnehmer als dunkle Kacheln (Avatar mittig, Name unten links in dunkler Kapsel), grüner Rahmen beim Sprechen, rotes Abzeichen bei stumm/Ton aus
+  - Kacheln werden mit mehr Teilnehmern kleiner (bis 4 / 8 / mehr)
 - „Stream beenden“ per UI Automation im Discord-Fenster (RPC kann das nicht)
 
 ### 8.8 Geräte

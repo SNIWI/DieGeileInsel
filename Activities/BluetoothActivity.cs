@@ -74,7 +74,7 @@ namespace DynamicIsland
             bool clean = host.CleanPage(this);
             bool on = radio == null || radio.State == RadioState.On;
             var blue = Ui.Br(Color.FromRgb(0x0A, 0x84, 0xFF));
-            var root = new StackPanel { Margin = new Thickness(22, 14, 22, 10) };
+            var root = new StackPanel { Margin = Ui.PageMargin };
 
             // Kopf wie im Kontrollzentrum: runder Knopf (blau = an) ist der Schalter
             var toggle = new Border
