@@ -29,6 +29,8 @@ namespace DynamicIsland
         public bool IsDay = true;
         public readonly List<WeatherHour> Hours = new List<WeatherHour>();
         public readonly List<WeatherDay> Days = new List<WeatherDay>();
+        /// <summary>Alle Stunden der nächsten 7 Tage (Tagesansicht der Wetter-Seite).</summary>
+        public readonly List<WeatherHour> AllHours = new List<WeatherHour>();
         public DateTime LastUpdate { get; private set; }
         public string Error { get; private set; } = "";
         public event Action Changed;
@@ -50,7 +52,7 @@ namespace DynamicIsland
                              "&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,relative_humidity_2m" +
                              "&hourly=temperature_2m,weather_code,is_day,precipitation_probability" +
                              "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
-                             "&timezone=auto&forecast_days=4";
+                             "&timezone=auto&forecast_days=7";
                 var j = JsonNode.Parse(await http.GetStringAsync(url));
                 var cur = j["current"];
                 Temp = D(cur["temperature_2m"]);
@@ -61,21 +63,23 @@ namespace DynamicIsland
                 IsDay = D(cur["is_day"]) > 0.5;
 
                 Hours.Clear();
+                AllHours.Clear();
                 var h = j["hourly"];
                 var ht = h["time"].AsArray();
                 var now = DateTime.Now;
-                for (int i = 0; i < ht.Count && Hours.Count < 12; i++)
+                for (int i = 0; i < ht.Count; i++)
                 {
                     var t = DateTime.Parse(ht[i].GetValue<string>(), Inv);
-                    if (t < now.AddMinutes(-30)) continue;
-                    Hours.Add(new WeatherHour
+                    var wh = new WeatherHour
                     {
                         Time = t,
                         Temp = D(h["temperature_2m"][i]),
                         Code = (int)D(h["weather_code"][i]),
                         Day = D(h["is_day"][i]) > 0.5,
                         Rain = (int)D(h["precipitation_probability"][i])
-                    });
+                    };
+                    AllHours.Add(wh);                                     // alle Stunden (für die Tagesansicht)
+                    if (t >= now.AddMinutes(-30) && Hours.Count < 12) Hours.Add(wh);   // die nächsten 12
                 }
 
                 Days.Clear();

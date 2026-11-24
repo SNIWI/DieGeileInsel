@@ -12,26 +12,35 @@ namespace DynamicIsland
         public static readonly Color ClaudeOrange = Color.FromRgb(0xD9, 0x77, 0x57);
         public static readonly Color DiscordBlurple = Color.FromRgb(0x58, 0x65, 0xF2);
 
-        /// <summary>Claude: orangefarbener Strahlenkranz.</summary>
+        /// <summary>Claude-Logo: Strahlenkranz aus spitz zulaufenden, gefüllten Strahlen
+        /// (unregelmäßig wie im Original, innen breit und in der Mitte verschmolzen).</summary>
         public static FrameworkElement Claude(double size, double opacity = 1, Color? tint = null)
         {
             var c = new Canvas { Width = 24, Height = 24 };
-            var g = new GeometryGroup();
-            double[] len = { 10.5, 8, 10, 7.5, 10.8, 8.2, 9.6, 7.8, 10.4, 8, 10, 7.6 };
-            for (int i = 0; i < len.Length; i++)
+            var brush = Ui.Br(tint ?? ClaudeOrange);
+            double[] len = { 11.2, 9.4, 10.6, 8.8, 11.0, 9.6, 10.2, 8.9, 10.8, 9.7, 10.4 };
+            double[] jit = { 0, 0.06, -0.04, 0.07, -0.03, 0.05, -0.06, 0.03, -0.02, 0.06, -0.05 };
+            var geo = new StreamGeometry { FillRule = FillRule.Nonzero };
+            using (var ctx = geo.Open())
             {
-                double a = i * Math.PI * 2 / len.Length - Math.PI / 2;
-                g.Children.Add(new LineGeometry(new Point(12 + Math.Cos(a) * 2.2, 12 + Math.Sin(a) * 2.2),
-                                                new Point(12 + Math.Cos(a) * len[i], 12 + Math.Sin(a) * len[i])));
+                var ctr = new Point(12, 12);
+                for (int i = 0; i < len.Length; i++)
+                {
+                    double a = i * Math.PI * 2 / len.Length - Math.PI / 2 + jit[i];
+                    var d = new Vector(Math.Cos(a), Math.Sin(a));
+                    var p = new Vector(-d.Y, d.X);
+                    double L = len[i], wMid = 1.45, wTip = 0.75;
+                    ctx.BeginFigure(ctr + p * 1.0, true, true);
+                    ctx.LineTo(ctr + d * (L * 0.42) + p * wMid, true, true);
+                    ctx.LineTo(ctr + d * (L - 0.8) + p * wTip, true, true);
+                    ctx.ArcTo(ctr + d * (L - 0.8) - p * wTip, new Size(wTip, wTip), 0, false, SweepDirection.Clockwise, true, true);
+                    ctx.LineTo(ctr + d * (L * 0.42) - p * wMid, true, true);
+                    ctx.LineTo(ctr - p * 1.0, true, true);
+                }
             }
-            c.Children.Add(new Path
-            {
-                Data = g,
-                Stroke = Ui.Br(tint ?? ClaudeOrange),
-                StrokeThickness = 2.6,
-                StrokeStartLineCap = PenLineCap.Round,
-                StrokeEndLineCap = PenLineCap.Round
-            });
+            geo.Freeze();
+            c.Children.Add(new Ellipse { Width = 5, Height = 5, Fill = brush, Margin = new Thickness(9.5, 9.5, 0, 0) });
+            c.Children.Add(new Path { Data = geo, Fill = brush, Stroke = brush, StrokeThickness = 0.5, StrokeLineJoin = PenLineJoin.Round });
             return Wrap(c, size, opacity);
         }
 

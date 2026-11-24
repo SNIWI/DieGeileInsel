@@ -1,8 +1,9 @@
 # Spezifikation – Die Geile Insel
 
 - **Produkt:** Dynamic Island für den Windows-Desktop
-- **Version:** 1.4.0
+- **Version:** 1.5.0 (in Arbeit, noch nicht veröffentlicht)
 - **Stand:** 24.11.2026
+- **Änderungen je Version:** [CHANGELOG.md](CHANGELOG.md)
 - **Sprache der App:** Deutsch
 - **Plattform:** Windows 10 (19041+) und Windows 11, x64
 
@@ -93,7 +94,7 @@ flowchart LR
 - **`SetupWindow`** – Einstellungen im Stil der Apple-Systemeinstellungen (Seitenleiste + Karten, Suche)
 - **`Ui`** – Farben, Schriften, Bausteine (Text, Glyph, RoundButton, Bar, Row3 …), `SpringEase`, `TextBoost`
 - **`LiquidGlass`** – Pixel-Shader für gläserne Reglerknöpfe (abschaltbar: „Flach“)
-- **`Settings`** – JSON-Einstellungen mit Migrationen (`LayoutVersion`, `PagesVersion`, `TilesVersion`)
+- **`Settings`** – JSON-Einstellungen mit Migrationen (`LayoutVersion`, `PagesVersion`, `TilesVersion`, `FeatureVersion`)
 
 ### 3.2 Anzeige-Auswahl (`Relayout`)
 
@@ -147,6 +148,7 @@ flowchart LR
 - **Klick daneben:** große Island klappt zu
 - **Maus an den oberen Rand:** versteckte Island kommt hervor
 - **Kreis antippen:** Pille und Kreis tauschen (anpinnen)
+- **Antippen bis 6 s nach „Claude ist fertig“:** holt die gerade verschwundene Meldung für 30 s zurück
 
 ### 5.2 Tastenkürzel (global)
 
@@ -194,15 +196,15 @@ flowchart LR
 - Laufende Aktivitäten (Timer, Claude, Discord …) automatisch hinter Übersicht/Player
 - Schlüssel:
   - `dashboard` – Übersicht im Sperrbildschirm-Stil: Datum über großer Uhr, rechts Player (wenn Musik läuft) oder Wetter, unten runde Knöpfe gleichmäßig über die Breite
-  - `weather` – Wetter: jetzt, Stunden mit Tagesname, Tage (nur „Ausführlich“)
+  - `weather` – Wetter: jetzt und die Wochentage; Tag antippen = Stunden dieses Tages (siehe 8.2)
   - `calendar` – Kalender: nächste Termine, optional Wetter links
   - `todo` – Microsoft To Do
   - `ai` – KI-Chat, Rechner, Text-Drop-Zone
   - `player` – Spotify- oder Medien-Player
-  - `bluetooth` – AirPods-, Kopfhörer- oder Bluetooth-Seite
+  - `bluetooth` – Kopfhörer- oder Bluetooth-Seite (AirPods-Seite nur mit eingeschalteten AirPods-Funktionen)
   - `sound` – Lautstärke, Mikrofon
   - `w:<id>` – eigene Widget-Seite (bis 4 Widgets)
-  - `downloads`, `clipboard`, `apps`, `brightness`, `shortcuts` – Panels
+  - `downloads`, `clipboard`, `messages`, `apps`, `brightness`, `shortcuts` – Panels
 
 ### 7.2 Schrift und Stil
 
@@ -214,7 +216,7 @@ flowchart LR
   - `full` (ausführlich): alle Details
 - **Pro Seite** (`PageLooks[key] = { Font, Style }`): Knopf „Aa“ in Seiten & Widgets, leer = wie alle
 - **Aufgeräumt** im Detail:
-  - Wetter: ohne Gefühlt/Wind/Feuchte, ohne Regen-%, ohne Tageszeile, 5 statt 6 Stunden
+  - Wetter: ohne Gefühlt/Wind/Feuchte, ohne Regen-%, 6 statt 7 Tage, etwas größer
   - Kalender: größere Termine, max. 3
   - Bluetooth: größere Kacheln, ohne Linkzeile
 
@@ -227,7 +229,8 @@ flowchart LR
 ### 7.4 Navigation
 
 - **Seitensymbole** oben: Symbol 13 px, Feld 21 px hoch; farbig oder alle weiß
-- Claude und Discord mit eigenen gezeichneten Logos
+- Claude, Discord und Teams mit eigenen gezeichneten Logos
+- **Claude-Logo** (`Logos.Claude`): gefüllte, spitz zulaufende Strahlen (11, unregelmäßig) um einen Kern, in der Claude-Farbe
 - **Wisch-Vorschau:** letzte Fassung jeder Seite zwischengespeichert, beim Ziehen daneben gezeigt; unbekannte Seiten als Symbol + Name
 - Beim Loslassen gleitet die neue Seite nahtlos weiter (Federanimation, kein Ausblenden)
 
@@ -237,10 +240,12 @@ flowchart LR
 
 ### 8.1 Musik
 
-- **MediaService:** Windows-Mediensitzungen (Spotify, Browser, VLC, Apple Music, SoundCloud …)
+- **MediaService:** Windows-Mediensitzungen (jede App, die Windows-Medien meldet)
   - Play/Pause, Spulen, Zufall, Wiederholen
   - Akzentfarbe aus dem Cover
-  - SoundCloud im Browser oder als App als eigene Quelle erkannt
+  - **Musikdienste erkannt** (`Provider`, mit Markenfarbe `ProviderColor`): YouTube Music, YouTube, SoundCloud, Apple Music, Deezer, TIDAL, Amazon Music, Qobuz, Bandcamp, Mixcloud, Audiomack, Pandora, Napster, TuneIn, Plexamp, VLC, foobar2000, MusicBee, AIMP, Winamp
+  - Erkennung: Desktop-App am App-Namen; Browser-Tab am Fenstertitel, in dem der Songtitel steht („YouTube Music“ vor „YouTube“)
+  - Anzeige: Quellenname im Player („In Deezer öffnen“), Player-Wechsler mit schönen App-Namen (auch Opera, Brave)
 - **SpotifyService:** Spotify Web API (OAuth, Redirect `http://127.0.0.1:8898/callback`)
   - Gefällt mir, Geräte, Playlists, Lautstärke (Steuern nur mit Premium)
 - **Player-Wechsler:** alle Quellen mit Status und Titel; Auswahl angeheftet bis „Automatisch“
@@ -251,12 +256,17 @@ flowchart LR
 
 ### 8.2 Wetter
 
-- Quelle: Open-Meteo (ohne Konto), alle 15 min
+- Quelle: Open-Meteo (ohne Konto), alle 15 min, 7 Tage Vorhersage (`AllHours` = alle Stunden, `Hours` = nächste 12)
 - Ort: aus den Einstellungen oder – nur auf Wunsch – Windows-Standort (15 s Zeitlimit)
-- **Wetter-Seite:**
-  - Kopf: Symbol, Temperatur, Ort, Beschreibung · Max/Min
-  - Stunden mit Tagesname („So 19“)
-  - 3 Tage mit vollem Tagesnamen (nur „Ausführlich“)
+- **Wetter-Seite (Übersicht):**
+  - Kopf: großes Symbol, Temperatur, Ort, Beschreibung · Max/Min (ausführlich: Gefühlt, Wind, Feuchte)
+  - Wochentage als Karte: „Heute“, „Mi“ … mit Symbol, Höchstwert (weiß) und Tiefstwert (grau); aufgeräumt 6, ausführlich 7 Tage
+  - keine Stundenleiste – Stunden nur auf Knopfdruck
+- **Tagesansicht** (Tag antippen):
+  - Kopf: Zurück-Knopf, Tag („Freitag, 27. November“), Beschreibung, Max/Min, Regen ab 20 %
+  - heute: ab jetzt jede Stunde (max. 12, spät abends mit morgen aufgefüllt); andere Tage: alle 2 Stunden von 0 bis 22 Uhr
+  - Raster 6 × 2: Uhrzeit, Symbol, Temperatur (ausführlich: Regen ab 30 %)
+  - irgendwo auf die Island tippen → zurück zur Übersicht
 - **Farbige Symbole** (`WeatherIcon`, Vektor, 24×24):
   - Sonne gelb, Mond hell, Wolken weiß/grau, Regen blau, Eisregen hellblau, Schnee hellblau, Gewitter mit gelbem Blitz, Nebel grau
   - in Leerlauf-Pille, Wetter-Seite, Kalender-Seite und Widget
@@ -278,12 +288,15 @@ flowchart LR
   - Ereignisse: UserPromptSubmit, PreToolUse, PostToolUse, Notification, Stop, SessionEnd, PreCompact
   - senden das Hook-JSON per `curl` asynchron an `http://localhost:7843/claude`
 - **ClaudeTracker:** eine `ClaudeActivity` pro Sitzung
-  - Zustände: arbeitet (orange, Ring), wartet (gelb, „!“), fertig (grün, Haken)
+  - Zustände: arbeitet (Ring in der Claude-Farbe), wartet (gelb, „!“), fertig (Haken in der Claude-Farbe)
+  - **Claude-Farbe** = eingestellte Farbe von „Claude ist fertig“ (Standard Claude-Orange): Kreis, Ring, Laufzeit, Logo, Seitensymbol
+  - Pille zeigt beim Arbeiten das Claude-Logo statt eines Zeichens; auch Limit-Warnung, Limits-Seite und Kachel „Claude-Limits“
   - Werkzeuge als deutsche Sätze („Bearbeitet Cats.cs“, „Sucht …“, „Denkt nach …“)
 - **„Claude ist fertig“:**
   - Kreis gleitet hinter die Pille und verschmilzt mit ihr (440 ms)
-  - Haken gleitet an den rechten Rand der Meldung
-  - danach löst sich der Kreis federnd heraus, nach 6 s weg
+  - Haken gleitet an den rechten Rand der Meldung, mit 8 px Luft zum Rand (`ReserveRight` 26)
+  - Meldung 4,5 s; endet sie, verschwindet auch der fertige Kreis und die Island fährt hoch
+  - Antippen innerhalb von 6 s danach holt „Claude ist fertig“ für 30 s zurück (angepinnt)
   - Titel, Logo und Haken in der Ereignisfarbe
 - **Laufzeit:**
   - zählt ab der Nachricht des Nutzers
@@ -308,7 +321,12 @@ flowchart LR
 
 ### 8.6 Nachrichten, Antworten, Anrufe
 
-- Windows-Mitteilungen werden gespiegelt, Farbe von „Neue Nachricht“
+- Windows-Mitteilungen werden gespiegelt, Farbe von „Neue Nachricht“ oder eigene Farbe der App (`AppColors`, siehe 8.14)
+- **Nachrichten-Verlauf** (`MessagesActivity`, `MessageHistory`):
+  - letzte 30 Nachrichten nur im Arbeitsspeicher (beim Beenden weg)
+  - Zeile: App-Logo, Absender, Text, Uhrzeit, App-Name in App-Farbe; Liste scrollt
+  - Antippen öffnet die App; „Leeren“ im Kopf
+  - erreichbar: Rechtsklick → „Nachrichten“, Kachel „Nachrichten“, `/page?key=messages`
 - **App-Logo** aus Windows (`AppIcons`, einmal pro App geladen); Discord ohne Logo: Discord-Zeichen; Teams in Teams-Lila
 - **Claude-App-Mitteilungen:** nicht als Chat; bei frischem Hook-Signal (≤ 45 s) gar nicht, sonst als Claude-Meldung
 - **Antworten:**
@@ -352,11 +370,17 @@ flowchart LR
 
 - **Bluetooth-Seite:** runder Schalter (blau = an), Status, Zahnrad; Geräte als Kacheln in zwei Spalten
 - **Kopfhörer-Seite:** Akku-Ring, Name + Status, „Ton läuft hier“ / „Ton hierher holen“, Lautstärke
-- **AirPods:**
+- **Kopfhörer als Standard:** alle Kopfhörer (auch AirPods) laufen als normale Kopfhörer; Einstellungsseite „Kopfhörer“ zeigt die verbundenen
+- **AirPods-Funktionen** (`AirPodsEnabled`, Standard aus; Migration `FeatureVersion` 1 schaltet sie einmalig aus):
+  - nur nach Einschalten (Einstellungen → Kopfhörer → „AirPods-Funktionen (mit WPods)“)
   - BLE: Akku, Case, Ohrerkennung
-  - Auto-Pause/-Weiter, Auto-Umschalten, AAP (ANC/Transparenz)
+  - Auto-Pause/-Weiter, Auto-Umschalten, AAP über WPods (ANC/Transparenz)
   - Case-Popup nur bei wirklich verbundenen eigenen AirPods (bis 7,5 s gewartet), nicht bei großer Island
+  - AirPods verbunden (Audiogerät erscheint, nicht in den ersten 15 s nach dem Start) → Animation „Gerät verbunden“
 - **Bluetooth/USB/Controller:** Meldung mit Akku-Ring, pro Gerät max. alle 3 h und nur nach ≥ 20 min Abwesenheit
+  - Animation „Gerät verbunden“ in der Gerätefarbe (`DeviceColors`), Symbol in der Gerätefarbe
+  - USB-Stick = Gerät (Name = Laufwerksname), Abziehen nur kurz „Entfernt“
+  - Migration: „Gerät verbunden“ nur mit „App“ → „App + Licht“ (Geräte haben keine große App-Ansicht, daher sonst kein Licht)
 - **Logitech** (`Logitech.cs`, `LogitechEnabled`):
   - HID++ 2.0 direkt über Windows, ohne G HUB/Options+
   - Empfänger (Lightspeed, Bolt, Unifying; Geräte 1–6, FF00/0002) und Bluetooth (FF43/0202)
@@ -415,13 +439,23 @@ flowchart LR
 
 ### 8.14 Animationen
 
-- Pro Ereignis: Aus · App · App + Licht · Licht · Hüpfen · Licht + Hüpfen, mit Tester und „Schnell einstellen“
-- Farbe pro Ereignis: Standard oder eine von 10 Farben (Symbol, Kreis, Licht)
-- **Licht-Effekte** (Standard + pro Ereignis):
-  - Umlauf: Lichtstreifen läuft einmal um die Island (folgt der Zielgröße)
+- **Pro Ereignis frei kombinierbar:** App · Licht · Hüpfen (`AnimModes[evt]` = z. B. `app,glow,bounce`, `off` = aus)
+  - alte Werte werden gelesen: `appglow` = App + Licht, `both` = Licht + Hüpfen
+  - App + Licht/Hüpfen: erst wird die Island länger, nach 320 ms Licht bzw. Hüpfer
+  - „App“ ohne große Ansicht (Nachricht, Gerät): allein gewählt = Hüpfer
+- **Licht-Effekte**, mehrere gleichzeitig (`GlowStyle` = z. B. `orbit,halo`; pro Ereignis `GlowStyles[evt]`, leer = Standard):
+  - Umlauf: Licht läuft einmal um die Island (folgt der Zielgröße)
   - Schein: weicher Schimmer dahinter
   - Glanz: Reflex zieht über die Island
   - Rahmen: Rand leuchtet zweimal
+- **Umlauf** (`OrbitLook`, `OrbitEnd`):
+  - Komet (Standard): heller Kopf, Schweif aus 12 Lagen, nach hinten weich ausgeblendet; Streifen: gleichmäßig
+  - startet oben in der Mitte, Muster = genau ein Umfang (läuft nahtlos über den Anfangspunkt)
+  - Weich auslaufen (Standard): 1,3 Runden in 2,1 s, langsam los, bremst am Ende und verglüht dabei
+  - Rahmen schließen: eine Runde, danach leuchtet der ganze Rand auf und verblasst sanft (2,6 s)
+- **Farben:** pro Ereignis (`AnimColors`), pro App bei Nachrichten (`AppColors`), pro Gerät (`DeviceColors`); Reihenfolge: App/Gerät vor Ereignis vor Standard
+  - Apps/Geräte erscheinen nach der ersten Nachricht bzw. Verbindung in der Liste (`SeenApps`, `SeenDevices`, je max. 40) oder werden selbst eingetragen
+- **Einstellungsseite:** Kapseln (Mehrfachauswahl) für Licht-Effekte; Bereich „Umlauf“ mit Vorschau; je Ereignis eine Karte (Farbpunkt, Name, Zusammenfassung, Testen, Kapseln „Animation“, bei Licht „Licht“); Listen „Farbe pro App“/„Farbe pro Gerät“; Schnellknöpfe
 - **Spotlight-Inhalte:**
   - Claude fertig: Logo · Projekt · Dauer, Haken rechts
   - Timer abgelaufen: Symbol · Uhrzeit
@@ -451,7 +485,7 @@ flowchart LR
 ### 9.1 Lokale API (`http://localhost:7843`, nur dieser PC)
 
 - **`/show`** (GET) – eigene Aktivität anzeigen/aktualisieren
-  - Parameter: `id`, `title`, `sub`, `left`, `right`, `detail`, `icon` (Hex-Glyph), `emoji`, `color`, `progress` (0–1), `banner=1`, `width`, `seconds` (als Hinweis), `glow` (orbit/halo/shine/ring)
+  - Parameter: `id`, `title`, `sub`, `left`, `right`, `detail`, `icon` (Hex-Glyph), `emoji`, `color`, `progress` (0–1), `banner=1`, `width`, `seconds` (als Hinweis), `glow` (orbit/halo/shine/ring, mehrere mit Komma)
   - Beispiel: `/show?id=spiel&title=FCB%202:1%20BVB&right=67'&icon=E7FC`
 - **`/hide`** (GET) – Aktivität `id` entfernen
 - **`/claude`** (POST) – Claude-Code-Hook-JSON
@@ -462,6 +496,7 @@ flowchart LR
   - `?dir=1|-1` – wischen (mit Animation)
 - **`/settings`** (GET) – Einstellungen öffnen, `?page=…&q=…` (Seite, Suche)
 - **`/test`** (GET) – `?event=message|claude|timer|download|copy|device`: Ereignis-Animation vorführen (für Aufnahmen)
+  - `?event=msg&app=…&title=…&body=…`: echte Nachricht durchspielen (Verlauf, App-Farbe)
 
 ### 9.2 Externe Dienste (nur wenn eingerichtet)
 
@@ -486,8 +521,9 @@ flowchart LR
   - Aussehen: `AccentColor`, `IdlePill`, `Material`, `GlassTint`, `SpotifyColor`
   - Uhr: `ClockDate`, `ClockBattery`, `ClockSeconds`, `ClockStyle`, `ClockSize`
   - Ausblenden: `AutoHide`, `HideWithActivities`, `HideDelay`, `HideInFullscreen`
-  - Animationen: `AnimModes`, `AnimColors`, `GlowStyle`, `GlowStyles`
-  - Hinweise: `AlertSize`, `AlertMotion`, `AlertPriority`, `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads`
+  - Animationen: `AnimModes`, `AnimColors`, `GlowStyle`, `GlowStyles`, `OrbitLook`, `OrbitEnd`, `AppColors`, `DeviceColors`, `SeenApps`, `SeenDevices`
+  - Hinweise: `AlertSize`, `AlertMotion`, `AlertPriority`, `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads`, `MessageHistory`
+  - Kopfhörer/AirPods: `AirPodsEnabled`, `AirPodsAap`, `AirPodsAutoPause`, `AirPodsAutoResume`, `AirPodsAutoSwitch`, `AirPodsNameFilter`
   - Wetter: `WeatherEnabled` (kleine Ansicht), `WeatherCity`, `WeatherUseLocation`
   - Kalender: `CalendarUrls`, `CalendarEnabled`, `CalendarRemind`, `CalendarAtStart`, `CalendarSpeak`, `CalendarWithWeather`
   - Katzen: `CatsMode`, `CatsStayVisible`, `CatsCurl`, `CatsWalk`, `CatsMoodAuto`, `Cats`
@@ -496,7 +532,8 @@ flowchart LR
   - Obsidian: `ObsidianEnabled`, `ObsidianVault`, `ObsidianTarget`, `ObsidianFolder`, `ObsidianNote`, `ObsidianTime`
   - Claude: `ClaudeEnabled`, `ClaudeLimitWarn`
   - Timer: `LastTimerSeconds`
-- **Migrationen** beim Laden: neue Seiten einfügen, Wetter/Kalender trennen (v8), alte Schalter übernehmen
+- **Seitenleiste:** jede Seite mit farbigem Quadrat und Symbol (`PageIcon`); Discord, Claude, Teams mit echtem Logo; Spotify fest grün
+- **Migrationen** beim Laden: neue Seiten einfügen, Wetter/Kalender trennen (v8), alte Schalter übernehmen, `FeatureVersion` 1 (Gerät mit Licht, AirPods-Funktionen aus)
 
 ---
 
@@ -507,6 +544,7 @@ flowchart LR
 - **Verschlüsselt (DPAPI):** KI-Schlüssel, To-Do-Token, Kalender-Adressen
 - **Unverschlüsselt** in `einstellungen.json`: Spotify- und Discord-Tokens, Discord-Client-Secret (offener Punkt)
 - Zwischenablage-Verlauf nur im Arbeitsspeicher, passwortähnliche Einträge verdeckt
+- Nachrichten-Verlauf nur im Arbeitsspeicher; gespeichert werden nur App- und Gerätenamen für die Farblisten (`SeenApps`, `SeenDevices`)
 - Wetter: nur Ortsname bzw. ungefähre Koordinaten an Open-Meteo
 - Demo-Modus (`/demo`) für Aufnahmen ohne private Medien-Titel
 
@@ -536,6 +574,8 @@ flowchart LR
   - v1.1.0 – Logitech, Obsidian, KI-Anbieter, Claude-Limits, Anrufe
   - v1.2.0 – Claude-Zeiten/-Limits korrigiert, Logitech-Ruhezustand
   - v1.3.0 – Wetter/Kalender getrennt, farbige Wetter-Symbole, Schrift und Stil der Seiten, neue Animationen
+  - v1.4.0 – Microsoft Teams, neues Design, größere Vorschau-Animationen
+  - 1.5.0 (in Arbeit) – siehe [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
@@ -573,7 +613,9 @@ DynamicIsland/
 │  ├─ Downloads.cs, GameDownloads.cs
 │  ├─ ScreenOcr.cs, SystemTools.cs, Native.cs, LiquidGlass.cs
 │  └─ Settings.cs
+├─ README.md, CHANGELOG.md, SPEZIFIKATION.md
 └─ docs/                   README-Grafiken
+                           icons/: Symbole für „Auf einen Blick“ (SVG)
                            PNG: banner, player, claude, animationen, katzen
                            GIF: uebersicht, seiten, wetter, teams, ereignisse, claude-fertig, licht-effekte,
                                 lichtring, kopieren, claude-limits, logitech
@@ -595,3 +637,8 @@ DynamicIsland/
 - Antworten-Knopf per App-Namensliste (Windows verrät nicht, ob eine Mitteilung eine Antwort-Funktion hat)
 - Teams: Kopplung nur während einer Besprechung möglich; Teilnehmer und Sprecher liefert die Teams-API nicht
 - Teams-Token liegt wie die Discord-Tokens unverschlüsselt in den Einstellungen
+- Musikdienste nur am Namen erkannt; gesteuert wird über Windows-Medien (volle Anbindung mit Playlists nur bei Spotify)
+- Browser-Tabs als Musikdienst nur erkennbar, wenn der Songtitel im Fenstertitel steht (aktiver Tab)
+- Wetter-Tagesansicht für andere Tage nur in 2-Stunden-Schritten
+- Nachrichten-Verlauf geht beim Beenden verloren (gewollt)
+- Noch keine Lizenzdatei im Repository

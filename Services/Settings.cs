@@ -73,6 +73,18 @@ namespace DynamicIsland
         public int LastTimerSeconds { get; set; } = 300;
         /// <summary>Eigene Farbe pro Ereignis (Hex, leer = Standardfarbe).</summary>
         public Dictionary<string, string> AnimColors { get; set; } = new Dictionary<string, string>();
+        /// <summary>Umlauf-Look: comet (Komet mit weichem Schweif) oder line (gleichmäßiger Streifen).</summary>
+        public string OrbitLook { get; set; } = "comet";
+        /// <summary>Umlauf-Ende: soft (läuft weich aus und verglüht) oder close (schließt sich zum leuchtenden Rahmen).</summary>
+        public string OrbitEnd { get; set; } = "soft";
+        /// <summary>Eigene Farbe pro App bei Nachrichten (App-Name → Hex).</summary>
+        public Dictionary<string, string> AppColors { get; set; } = new Dictionary<string, string>();
+        /// <summary>Eigene Farbe pro Gerät (Gerätename → Hex).</summary>
+        public Dictionary<string, string> DeviceColors { get; set; } = new Dictionary<string, string>();
+        /// <summary>Apps, von denen schon Nachrichten kamen (für die Farbliste).</summary>
+        public List<string> SeenApps { get; set; } = new List<string>();
+        /// <summary>Geräte, die schon verbunden waren (für die Farbliste).</summary>
+        public List<string> SeenDevices { get; set; } = new List<string>();
         public int LayoutVersion { get; set; }
         /// <summary>Bedienelemente: "glass" = Apple Liquid Glass, "flat" = flach.</summary>
         public string Material { get; set; } = "glass";
@@ -136,6 +148,8 @@ namespace DynamicIsland
         public bool KeepPlayer { get; set; } = true;
         /// <summary>Zwischenablage-Verlauf merken (nur im Arbeitsspeicher).</summary>
         public bool ClipHistory { get; set; } = true;
+        /// <summary>Nachrichten-Verlauf merken (nur im Arbeitsspeicher, geht beim Beenden verloren).</summary>
+        public bool MessageHistory { get; set; } = true;
         /// <summary>Position: Abstand von der Bildschirmmitte (X) und vom oberen Rand (Y).</summary>
         public double PosX { get; set; } = 0;
         public double PosY { get; set; } = 0;
@@ -206,7 +220,10 @@ namespace DynamicIsland
         public string TeamsToken { get; set; } = "";
 
         // AirPods (früher eigene App „AirPods Companion“, jetzt fest eingebaut)
-        public bool AirPodsEnabled { get; set; } = true;
+        /// <summary>AirPods-Funktionen (Akku-Karte, Ohrerkennung, WPods). Aus = AirPods gelten als normale Kopfhörer.</summary>
+        public bool AirPodsEnabled { get; set; } = false;
+        /// <summary>Einmalige Umstellungen (1 = Gerät verbunden mit Licht, Kopfhörer statt AirPods als Standard).</summary>
+        public int FeatureVersion { get; set; }
         public bool AirPodsAutoPause { get; set; } = true;
         public bool AirPodsAutoResume { get; set; } = true;
         public bool AirPodsAutoSwitch { get; set; } = true;
@@ -379,6 +396,14 @@ namespace DynamicIsland
                     bool on = s.AnimEvents != null && s.AnimEvents.Contains(k) && s.DoneAnimation != "off";
                     s.AnimModes[k] = on ? "app" : "off";
                 }
+            }
+            if (s.FeatureVersion < 1)
+            {
+                // „Gerät verbunden“ nur mit „App“ zeigte kein Licht (Geräte haben keine große App-Ansicht) → Licht dazu
+                if (s.AnimModes.TryGetValue("device", out var dm) && dm == "app") s.AnimModes["device"] = "app,glow";
+                // Standard sind jetzt normale Kopfhörer; die AirPods-Funktionen (mit WPods) schaltet man bei Bedarf ein
+                s.AirPodsEnabled = false;
+                s.FeatureVersion = 1;
             }
             s.Shortcuts ??= DynamicIsland.Shortcuts.Defaults();
             s.DiscordClientId ??= "";

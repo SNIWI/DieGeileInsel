@@ -112,6 +112,8 @@ namespace DynamicIsland
 
         // Zwischenablage-Verlauf (nur im Arbeitsspeicher)
         public readonly List<ClipItem> ClipHistory = new List<ClipItem>();
+        /// <summary>Letzte Nachrichten (nur im Arbeitsspeicher, höchstens 30).</summary>
+        public readonly List<MsgItem> MsgHistory = new List<MsgItem>();
         DateTime ignoreClipUntil;
         public IntPtr Handle => hwnd;
 
@@ -642,6 +644,29 @@ namespace DynamicIsland
             if (expandedAct == a) expandedAct = null;
             if (a == mediaAct) mediaAct = null;
             try { a.OnRemoved(); } catch (Exception ex) { Program.Log(ex); }
+            // „Claude ist fertig“ vorbei → auch der fertige Kreis geht mit weg (Island fährt wieder hoch)
+            if (a is SpotlightActivity sp && sp.Category == "claude")
+                foreach (var ca in activities.OfType<ClaudeActivity>().Where(x => x.State == ClaudeState.Done && x.Id != pinnedId).ToList())
+                    ca.Finished = true;
+            // kurz danach antippen holt die Meldung zurück
+            if (a is ClaudeActivity done && done.State == ClaudeState.Done) { recentClaude = done; recentClaudeAt = DateTime.Now; }
+        }
+
+        ClaudeActivity recentClaude;
+        DateTime recentClaudeAt;
+        const double ClaudeGraceSeconds = 6;
+
+        /// <summary>Gerade verschwundene „Claude ist fertig“-Meldung zurückholen (Antippen kurz danach).</summary>
+        bool ReviveRecentClaude()
+        {
+            var c = recentClaude;
+            if (c == null || (DateTime.Now - recentClaudeAt).TotalSeconds > ClaudeGraceSeconds || activities.Contains(c)) return false;
+            recentClaude = null;
+            c.Revive(30);
+            Add(c);
+            pinnedId = c.Id;
+            Relayout();
+            return true;
         }
 
         /// <summary>Island kurz zeigen (z. B. Claude ist fertig oder wartet auf dich).</summary>
@@ -1195,7 +1220,7 @@ namespace DynamicIsland
         /// Endlage des Häkchens: so nah am rechten Rand wie das Symbol links am linken Rand (gleicher Abstand).
         /// X = 0 hieße Mitte 18 px vor dem Rand; das Häkchen ist ~12 px breit.
         /// </summary>
-        static double DoneCheckEndX => Math.Max(0, 12 - (AlertLook.SpotPadLeft + 1));
+        static double DoneCheckEndX => Math.Max(0, 12 - (AlertLook.SpotPadLeft + 1)) - 8;   // etwas Luft zum Rand, wirkt sonst gedrängt
 
         void UpdateDoneCheck(bool want)
         {
@@ -1358,6 +1383,7 @@ namespace DynamicIsland
                 return;
             }
             var a = currentAct;
+            if ((a == null || a == clock) && ReviveRecentClaude()) return;   // Claude-Meldung gerade weg → zurückholen
             if (a == null || a == clock) { Expand(dashboard); return; }
             if (a.IsAlert)
             {
@@ -2398,6 +2424,7 @@ namespace DynamicIsland
                 Id = "claude-limits",
                 Glyph = "✻",
                 GlyphFont = Ui.SymbolFont,
+                IconFactory = s => Logos.Claude(s, 1, ClaudeActivity.DoneColor()),
                 Accent = ClaudeTracker.Orange,
                 ExpiresAt = DateTime.Now.AddSeconds(30),
                 Ticker = g =>
@@ -2848,6 +2875,7 @@ namespace DynamicIsland
                 case "shortcuts": ShowShortcuts(); break;
                 case "apps": ShowApps(); break;
                 case "clipboard": ShowClipboardHistory(); break;
+                case "messages": ShowMessageHistory(); break;
                 case "sound": ShowSound(); break;
                 case "brightness": ShowBrightness(); break;
                 case "downloads": ShowDownloads(); break;
@@ -2947,6 +2975,7 @@ namespace DynamicIsland
                 case "brightness": return Ui.Yellow;
                 case "downloads": return Ui.Blue;
                 case "clipboard": return Ui.Teal;
+                case "messages": return Ui.Blue;
                 case "shortcuts": return Ui.Purple;
                 case "apps": return Ui.Blue;
                 case "ai": return Ui.Purple;
@@ -2955,7 +2984,7 @@ namespace DynamicIsland
                 case "weather": return Ui.Teal;
             }
             if (key.StartsWith("w:")) return Ui.Teal;
-            if (live is ClaudeActivity) return Logos.ClaudeOrange;
+            if (live is ClaudeActivity) return ClaudeActivity.DoneColor();
             if (live is DiscordVoiceActivity) return Logos.DiscordBlurple;
             if (live is TeamsActivity) return Logos.TeamsPurple;
             if (live is GenericActivity ga) return ga.Accent;
@@ -2980,7 +3009,25 @@ namespace DynamicIsland
         };
 
         /// <summary>Animationsart „App im Vordergrund“ für dieses Ereignis an?</summary>
-        bool SpotlightOn(string evt) => (AnimMode(evt) == "app" || AnimMode(evt) == "appglow") && !fsHidden && !Ui.ReduceMotion;
+        bool SpotlightOn(string evt) => AnimParts(evt).Contains("app") && !fsHidden && !Ui.ReduceMotion;
+
+        /// <summary>Teile einer Animation, frei kombinierbar: app, glow (Licht), bounce (Hüpfen).
+        /// Alte Einzelwerte werden übersetzt (appglow = App + Licht, both = Licht + Hüpfen).</summary>
+        public static HashSet<string> ParseAnim(string m)
+        {
+            var set = new HashSet<string>();
+            switch (m ?? "off")
+            {
+                case "off": case "": return set;
+                case "appglow": set.Add("app"); set.Add("glow"); return set;
+                case "both": set.Add("glow"); set.Add("bounce"); return set;
+            }
+            foreach (var p in m.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (p == "app" || p == "glow" || p == "bounce") set.Add(p);
+            return set;
+        }
+
+        public HashSet<string> AnimParts(string evt) => ParseAnim(AnimMode(evt));
 
         /// <summary>Gewählte Animation für ein Ereignis (Einstellungen → Animationen).</summary>
         public string AnimMode(string evt) =>
@@ -3003,13 +3050,15 @@ namespace DynamicIsland
                 };
             }
             Spotlight(icon, c, title, sub, seconds, tap, evt, titleColor);
-            if (AnimMode(evt) == "appglow" && !Ui.ReduceMotion)
+            var parts = AnimParts(evt);
+            bool glow = parts.Contains("glow"), hop = parts.Contains("bounce");
+            if ((glow || hop) && !Ui.ReduceMotion)
             {
-                // App + Licht: erst die Island strecken, dann läuft das Licht
+                // App + Licht / Hüpfen: erst die Island strecken, dann läuft das Licht bzw. federt sie
                 var col = c;
                 var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(tucked ? TuckMs + 320 : 320) };
                 var gs = GlowStyleFor(evt);
-                t.Tick += (s2, e2) => { t.Stop(); Glow(col, gs); };
+                t.Tick += (s2, e2) => { t.Stop(); if (glow) Glow(col, gs); if (hop) Bounce(); };
                 t.Start();
             }
         }
@@ -3020,7 +3069,7 @@ namespace DynamicIsland
             // denn sie kann in der Warteschlange landen
             var s = new SpotlightActivity(icon, c, title, sub, seconds, tap) { Host = this, Category = category, TitleColor = titleColor };
             s.Id = "spotlight-" + (category ?? "other");   // eigene Kennung pro Art → stellen sich an statt sich zu ersetzen
-            if (category == "claude") s.ReserveRight = 18;  // rechte Ecke für das ✓ aus dem Kreis
+            if (category == "claude") s.ReserveRight = 26;  // rechte Ecke für das ✓ aus dem Kreis (mit Luft zum Rand)
             Add(s);
             foreach (var cat in catViews.Concat(stripCats)) cat.Hop();
         }
@@ -3072,9 +3121,9 @@ namespace DynamicIsland
         /// <summary>Vorschau eines Ereignisses aus den Einstellungen (Animations-Tester).</summary>
         public void TestEvent(string key, Color c)
         {
-            var mode = AnimMode(key);
-            if (mode == "off") mode = "app";                       // „Aus“ testen: trotzdem etwas zeigen
-            if (mode != "app" && mode != "appglow") { Celebrate(c, key, true, mode); return; }
+            var parts = AnimParts(key);
+            if (parts.Count == 0) { Celebrate(c, key, true, "glow,bounce"); return; }   // „Aus“ testen: trotzdem etwas zeigen
+            if (!parts.Contains("app")) { Celebrate(c, key, true, string.Join(",", parts)); return; }
             switch (key)
             {
                 case "claude": SpotlightE("claude", ClaudeDoneIcon, Logos.ClaudeOrange, "Claude ist fertig", "Dyamicisland+ · nach 3:12", titleColor: ClaudeActivity.DoneColor()); break;
@@ -3089,13 +3138,14 @@ namespace DynamicIsland
 
         /// <summary>Kurz feiern: farbiges Leuchten um die Island und/oder ein kleiner Hüpfer, die Katzen hüpfen mit.
         /// evt = Ereignis (nur wenn eingeschaltet); test = Vorschau aus den Einstellungen (läuft immer).</summary>
-        public void Celebrate(Color c, string evt = null, bool test = false, string forceMode = null)
+        public void Celebrate(Color c, string evt = null, bool test = false, string forceMode = null, Color? exact = null)
         {
-            var mode = forceMode ?? (evt == null ? "both" : AnimMode(evt));
-            c = EventColor(evt, c);   // eigene Farbe aus den Einstellungen
-            if (mode == "app") mode = "bounce";   // ohne eigene Großansicht (z. B. Nachricht-Banner): kleiner Hüpfer
-            if (mode == "appglow") mode = "glow";
-            if (mode == "off" || (Ui.ReduceMotion && !test) || pill == null) return;
+            var parts = forceMode != null ? ParseAnim(forceMode) : evt == null ? ParseAnim("glow,bounce") : AnimParts(evt);
+            c = exact ?? EventColor(evt, c);   // Farbe pro App/Gerät, sonst eigene Farbe des Ereignisses
+            // „App“ ohne eigene Großansicht (z. B. Nachricht-Banner): allein gewählt = kleiner Hüpfer
+            if (parts.Remove("app") && parts.Count == 0) parts.Add("bounce");
+            bool glow = parts.Contains("glow"), hop = parts.Contains("bounce");
+            if ((!glow && !hop) || (Ui.ReduceMotion && !test) || pill == null) return;
             lastActive = DateTime.Now;
             Relayout();
             // erst auftauchen lassen (falls die Island oben versteckt war), dann feiern
@@ -3103,8 +3153,8 @@ namespace DynamicIsland
             t.Tick += (s, e) =>
             {
                 t.Stop();
-                if (mode == "glow" || mode == "both") Glow(c, GlowStyleFor(evt));
-                if (mode == "bounce" || mode == "both") Bounce();
+                if (glow) Glow(c, GlowStyleFor(evt));
+                if (hop) Bounce();
                 foreach (var cat in catViews.Concat(stripCats)) cat.Hop();
             };
             t.Start();
@@ -3115,48 +3165,102 @@ namespace DynamicIsland
         {
             lastActive = DateTime.Now;
             if (tucked) SetTucked(false);   // Vorschau aus den Einstellungen: Island dafür hervorholen
-            switch (style ?? Settings.GlowStyle ?? "orbit")
-            {
-                case "orbit": GlowOrbit(c); break;
-                case "halo": GlowHalo(c); break;
-                case "shine": GlowShine(c); break;
-                default: GlowRing(c); break;
-            }
+            // mehrere Effekte gleichzeitig möglich, z. B. "orbit,halo"
+            var list = (style ?? Settings.GlowStyle ?? "orbit").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToList();
+            if (list.Count == 0) list.Add("orbit");
+            foreach (var st in list)
+                switch (st)
+                {
+                    case "orbit": GlowOrbit(c); break;
+                    case "halo": GlowHalo(c); break;
+                    case "shine": GlowShine(c); break;
+                    default: GlowRing(c); break;
+                }
         }
 
-        /// <summary>Ein Lichtstreifen läuft einmal um die Island herum und verglüht.</summary>
-        /// Größe = Zielgröße der Island (sie wächst beim Hinweis ja gerade erst) und folgt ihr per Bindung –
-        /// früher nahm der Ring die alte, kleine Größe und war darum zu kurz.
+        /// <summary>Ein Licht läuft einmal um die Island herum.
+        /// Look (Einstellungen → Animationen): Komet mit weichem Schweif oder gleichmäßiger Streifen.
+        /// Ende: läuft weich aus (bremst ab und verglüht dabei) oder schließt sich zum leuchtenden Rahmen.
+        /// Größe = Zielgröße der Island (sie wächst beim Hinweis gerade erst) und folgt ihr per Bindung.</summary>
         void GlowOrbit(Color c)
         {
             if (pillStackRef == null) return;
             double w = Math.Max(30, targetW > 0 ? targetW : pill.ActualWidth), h = Math.Max(20, targetH > 0 ? targetH : pill.ActualHeight);
-            double r = Math.Min(h / 2, 44), th = 2.6;
+            double r = Math.Min(h / 2, 44);
             double perim = 2 * (w + h) - (8 - 2 * Math.PI) * r;
-            double dash = perim * 0.3 / th, gap = perim / th;
-            var line = new System.Windows.Shapes.Rectangle
+            bool comet = (Settings.OrbitLook ?? "comet") != "line";
+            bool close = Settings.OrbitEnd == "close";
+            var light = CatStyle.Mix(c, Colors.White, 0.18);
+            var core = CatStyle.Mix(c, Colors.White, 0.55);
+
+            var host = new Grid
             {
-                RadiusX = r, RadiusY = r,
-                Stroke = Ui.Br(CatStyle.Mix(c, Colors.White, 0.18)),   // reine Ereignisfarbe (leicht aufgehellt, ohne Farbverlauf)
-                StrokeThickness = th,
-                StrokeDashArray = new DoubleCollection { dash, gap },
-                StrokeDashCap = PenLineCap.Round,
                 VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center,
                 IsHitTestVisible = false, RenderTransform = pill.RenderTransform, RenderTransformOrigin = new Point(0.5, 0),
-                Effect = new DropShadowEffect { Color = c, BlurRadius = 16, ShadowDepth = 0, Opacity = 1 }
+                Effect = new DropShadowEffect { Color = c, BlurRadius = 18, ShadowDepth = 0, Opacity = 0.95 }
             };
-            line.SetBinding(WidthProperty, new System.Windows.Data.Binding("Width") { Source = pill });
-            line.SetBinding(HeightProperty, new System.Windows.Data.Binding("Height") { Source = pill });
-            pillStackRef.Children.Add(line);
-            var run = new DoubleAnimation(0, -perim / th, TimeSpan.FromMilliseconds(1600)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
-            line.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, run);
-            var fade = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(1900) };
-            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120))));
-            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1500))));
-            fade.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1900))));
-            fade.Completed += (s, e) => pillStackRef.Children.Remove(line);
-            line.Opacity = 0;
-            line.BeginAnimation(OpacityProperty, fade);
+            host.SetBinding(WidthProperty, new System.Windows.Data.Binding("Width") { Source = pill });
+            host.SetBinding(HeightProperty, new System.Windows.Data.Binding("Height") { Source = pill });
+            pillStackRef.Children.Add(host);
+
+            // Laufweg des Lichtkopfs (px entlang des Rands). Ein Muster-Durchlauf = genau ein Umfang,
+            // so läuft das Licht nahtlos über den Anfangspunkt (kein „Loch“, in dem es verschwindet).
+            double start = Math.Max(0, w / 2 - r);           // oben in der Mitte loslaufen
+            double end = start + perim * (close ? 1.0 : 1.3);
+            int ms = close ? 1600 : 2100;
+            // langsam los, zügig herum, am Ende sanft abbremsen (beim Auslaufen schon am Verglühen)
+            IEasingFunction ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+            double tail = perim * (comet ? 0.42 : 0.3);
+
+            var lights = new Grid();
+            void Seg(double len, double th, double op, Color col, PenLineCap cap)
+            {
+                double period = perim / th, dash = Math.Min(len / th, period * 0.98);
+                var s = new System.Windows.Shapes.Rectangle
+                {
+                    RadiusX = r, RadiusY = r, Stroke = Ui.Br(col), StrokeThickness = th, Opacity = op,
+                    StrokeDashArray = new DoubleCollection { dash, period - dash }, StrokeDashCap = cap
+                };
+                // Kopf aller Teile bleibt deckungsgleich: Anfang = Kopf − Länge
+                s.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty,
+                    new DoubleAnimation((len - start) / th, (len - end) / th, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease });
+                lights.Children.Add(s);
+            }
+            if (comet)
+            {
+                // Schweif aus übereinanderliegenden Stücken: zum Kopf hin heller, hinten weich ausgeblendet
+                const int n = 12;
+                for (int i = n; i >= 1; i--) Seg(tail * i / n, 2.6, 0.15, light, PenLineCap.Flat);
+                Seg(tail * 0.07, 3.2, 1, core, PenLineCap.Round);   // heller Kopf
+            }
+            else Seg(tail, 2.6, 1, light, PenLineCap.Round);
+
+            // Licht: kurz einblenden, beim Auslaufen weich verglühen (läuft dabei weiter, darum kein harter Schluss)
+            var fade = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(ms + 150) };
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180)), new SineEase { EasingMode = EasingMode.EaseOut }));
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(close ? 1250 : 1200))));
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(close ? 1800 : ms + 150)), new SineEase { EasingMode = EasingMode.EaseInOut }));
+            host.Children.Add(lights);
+            lights.Opacity = 0;
+            lights.BeginAnimation(OpacityProperty, fade);
+
+            int total = ms + 150;
+            if (close)
+            {
+                // der Rahmen „füllt“ sich, wenn das Licht ankommt, leuchtet kurz und verblasst sanft
+                var frame = new System.Windows.Shapes.Rectangle { RadiusX = r, RadiusY = r, Stroke = Ui.Br(light), StrokeThickness = 2.2, Opacity = 0 };
+                host.Children.Insert(0, frame);
+                total = 2600;
+                var ff = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(total) };
+                ff.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1050))));
+                ff.KeyFrames.Add(new EasingDoubleKeyFrame(0.9, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1650)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+                ff.KeyFrames.Add(new LinearDoubleKeyFrame(0.9, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1800))));
+                ff.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(total)), new SineEase { EasingMode = EasingMode.EaseInOut }));
+                frame.BeginAnimation(OpacityProperty, ff);
+            }
+            var done = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(total + 50) };
+            done.Tick += (s, e) => { done.Stop(); pillStackRef.Children.Remove(host); };
+            done.Start();
         }
 
         /// <summary>Weicher farbiger Schein hinter der Island, der einmal aufblüht.</summary>
@@ -3287,6 +3391,26 @@ namespace DynamicIsland
             evt != null && Settings.GlowStyles != null && Settings.GlowStyles.TryGetValue(evt, out var st) && !string.IsNullOrEmpty(st)
                 ? st : (Settings.GlowStyle ?? "orbit");
 
+        /// <summary>Eigene Farbe für eine App oder ein Gerät (Einstellungen → Animationen), sonst null.</summary>
+        public static Color? NamedColor(Dictionary<string, string> map, string name)
+        {
+            if (map == null || string.IsNullOrWhiteSpace(name)) return null;
+            foreach (var kv in map)
+                if (string.Equals(kv.Key, name.Trim(), StringComparison.OrdinalIgnoreCase) && CatStyle.TryColor(kv.Value, out var c)) return c;
+            return null;
+        }
+
+        /// <summary>App oder Gerät für die Farbliste in den Einstellungen merken (höchstens 40).</summary>
+        void RememberName(List<string> list, string name)
+        {
+            if (list == null || string.IsNullOrWhiteSpace(name)) return;
+            name = name.Trim();
+            if (list.Any(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase))) return;
+            list.Add(name);
+            while (list.Count > 40) list.RemoveAt(0);
+            Settings.Save();
+        }
+
         bool HasEventColor(string evt) => evt != null && Settings.AnimColors != null && Settings.AnimColors.TryGetValue(evt, out var h) && !string.IsNullOrEmpty(h);
 
         void Bounce()
@@ -3312,6 +3436,7 @@ namespace DynamicIsland
                 case "brightness": return "\uE706";
                 case "downloads": return "\uE896";
                 case "clipboard": return "\uE77F";
+                case "messages": return "\uE8BD";
                 case "shortcuts": return "\uECA5";
                 case "apps": return "\uE71D";
                 case "ai": return "\uE8BD";
@@ -3334,6 +3459,7 @@ namespace DynamicIsland
                 case "brightness": return "Helligkeit";
                 case "downloads": return "Downloads";
                 case "clipboard": return "Zwischenablage";
+                case "messages": return "Nachrichten";
                 case "shortcuts": return "Verknüpfungen";
                 case "apps": return "Apps";
                 case "ai": return Gemini.Name;
@@ -3574,7 +3700,19 @@ namespace DynamicIsland
             Color accent = isDiscord ? DiscordVoiceActivity.Blurple : isWhatsApp ? Ui.Green
                 : (app ?? "").IndexOf("teams", StringComparison.OrdinalIgnoreCase) >= 0 ? Color.FromRgb(0x7B, 0x83, 0xEB)   // Teams-Lila
                 : EventColor("message", Ui.Blue);
-            Celebrate(call ? Ui.Green : accent, "message");
+            // eigene Farbe für diese App (Einstellungen → Animationen → Farbe pro App) geht vor
+            Settings.SeenApps ??= new List<string>();
+            RememberName(Settings.SeenApps, app);
+            var appColor = NamedColor(Settings.AppColors, app);
+            if (appColor.HasValue) accent = appColor.Value;
+            Celebrate(call ? Ui.Green : accent, "message", exact: call ? null : appColor);
+            if (Settings.MessageHistory)
+            {
+                MsgHistory.Insert(0, new MsgItem { App = app, Aumid = aumid, Title = title, Body = body, IconUrl = iconUrl, Call = call, IsDiscord = isDiscord, IsWhatsApp = isWhatsApp, Accent = call ? Ui.Green : accent });
+                while (MsgHistory.Count > 30) MsgHistory.RemoveAt(MsgHistory.Count - 1);
+                var panel = activities.OfType<MessagesActivity>().FirstOrDefault();
+                if (panel != null) Rebuild(panel);
+            }
 
             var a = Alert(call ? "call-in" : "msg", call ? 25 : 7, g =>
             {
@@ -3824,6 +3962,7 @@ namespace DynamicIsland
                 g.Banner = true;
                 g.Glyph = waiting ? "!" : "✻";
                 g.GlyphFont = Ui.SymbolFont;
+                if (!waiting) g.IconFactory = sz => Logos.Claude(sz, 1, col);
                 g.Accent = col;
                 g.TitleColor = col;
                 g.Title = t;
@@ -4102,6 +4241,14 @@ namespace DynamicIsland
                 };
                 AirPods.EndpointChanged += name =>
                 {
+                    // AirPods verbunden → wie jedes Gerät: Licht/Hüpfen nach „Gerät verbunden“, eigene Gerätefarbe
+                    if (name != null && lastAirEndpoint == null && (DateTime.Now - startedAt).TotalSeconds > 15)   // nicht beim Start der Island
+                    {
+                        Settings.SeenDevices ??= new List<string>();
+                        RememberName(Settings.SeenDevices, name);
+                        Celebrate(Ui.Purple, "device", exact: NamedColor(Settings.DeviceColors, name));
+                    }
+                    lastAirEndpoint = name;
                     var a = activities.OfType<AirPodsActivity>().FirstOrDefault();
                     if (a != null) Rebuild(a);
                     RefreshAirPodsTile();
@@ -4137,6 +4284,8 @@ namespace DynamicIsland
             catch (Exception ex) { Program.Log(ex); }
         }
 
+        string lastAirEndpoint;
+        readonly DateTime startedAt = DateTime.Now;
         bool? pairedAirPods;
         DateTime pairedAirPodsChecked;
 
@@ -4174,7 +4323,7 @@ namespace DynamicIsland
         public bool AirPodsConnected => AirPods != null && AirPods.Running && (AirPods.EndpointName != null || AirPods.Aap.Connected);
 
         /// <summary>Verbundene normale Kopfhörer (AirPods ausgenommen, die haben ihre eigene Seite).</summary>
-        public BtDev StandardHeadphones => bt.Headphones(IsAirPodsName);
+        public BtDev StandardHeadphones => bt.Headphones(n => Settings.AirPodsEnabled && IsAirPodsName(n));   // ohne AirPods-Funktionen zählen AirPods als Kopfhörer
 
         /// <summary>Akkustand eines verbundenen Bluetooth-Geräts (falls Windows ihn kennt).</summary>
         // ---- Logitech: Akku von Maus / Tastatur ----
@@ -4864,6 +5013,30 @@ namespace DynamicIsland
             if (panel != null) Rebuild(panel);
         }
 
+        public void ClearMsgHistory()
+        {
+            MsgHistory.Clear();
+            var panel = activities.OfType<MessagesActivity>().FirstOrDefault();
+            if (panel != null) Rebuild(panel);
+        }
+
+        public void ShowMessageHistory()
+        {
+            var a = activities.OfType<MessagesActivity>().FirstOrDefault() ?? new MessagesActivity(this);
+            a.ExpiresAt = DateTime.Now.AddSeconds(30);
+            if (activities.Contains(a)) Rebuild(a);
+            else Add(a);
+            Expand(a);
+        }
+
+        /// <summary>Nachricht aus dem Verlauf antippen: zur App, von der sie kam.</summary>
+        public void OpenMessage(MsgItem m)
+        {
+            var panel = activities.OfType<MessagesActivity>().FirstOrDefault();
+            if (panel != null) { panel.Finished = true; Relayout(); }
+            OpenSourceApp(m.App, m.Aumid, m.IsDiscord, m.IsWhatsApp);
+        }
+
         public void ShowClipboardHistory()
         {
             var a = activities.OfType<ClipboardActivity>().FirstOrDefault() ?? new ClipboardActivity(this);
@@ -5028,13 +5201,21 @@ namespace DynamicIsland
         /// </summary>
         void ShowDeviceAlert(string id, string glyph, string title, string subtitle, double? fraction, Color ring, Func<bool> tap = null)
         {
-            Celebrate(ring, "device");
+            // eigene Farbe für dieses Gerät (Einstellungen → Animationen → Farbe pro Gerät): Licht und Symbol
+            Color? devColor = null;
+            if (id != "bt-preview")
+            {
+                Settings.SeenDevices ??= new List<string>();
+                RememberName(Settings.SeenDevices, title);
+                devColor = NamedColor(Settings.DeviceColors, title);
+            }
+            Celebrate(ring, "device", exact: devColor);
             var a = Alert(id, 5, g =>
             {
                 g.Banner = true;
                 g.Glyph = glyph;
                 g.GlyphFont = Ui.IconFont;
-                g.Accent = Ui.WhiteC;
+                g.Accent = devColor ?? Ui.WhiteC;
                 g.Title = title;
                 g.Subtitle = subtitle;
                 g.CompactW = 410;
@@ -5282,6 +5463,7 @@ namespace DynamicIsland
         {
             if (path.StartsWith("/claude-limits")) { Claude.HandleLimits(body); return; }   // Statuszeile: Nutzungs-Limits
             if (path.StartsWith("/logitech")) { ShowLogitech(); return; }                       // Akku von Maus & Tastatur zeigen
+            if (path.StartsWith("/test") && q["event"] == "msg") { ShowMessage(q["app"] ?? "WhatsApp", q["title"] ?? "Luca", q["body"] ?? "Kommst du heute noch?", null, null); return; }   // echte Nachricht vorführen (Verlauf, App-Farbe)
             if (path.StartsWith("/test")) { var tk = q["event"] ?? "message"; TestEvent(tk, EventColor(tk, Ui.Blue)); return; }   // Ereignis-Animation vorführen (?event=claude|timer|download|copy|message|device)
             if (path.StartsWith("/demo"))                                                       // Demo-Modus für Aufnahmen: Medien (Titel, Cover) ausblenden
             {
@@ -5514,6 +5696,7 @@ namespace DynamicIsland
             cm.Items.Add(MItem("Downloads", ShowDownloads));
             cm.Items.Add(MItem("Ton & Ausgabegerät", ShowSound));
             cm.Items.Add(MItem("Zwischenablage", ShowClipboardHistory));
+            cm.Items.Add(MItem("Nachrichten", ShowMessageHistory));
             cm.Items.Add(MItem("Apps", ShowApps));
             cm.Items.Add(MItem("Helligkeit", ShowBrightness));
             if (Settings.AiEnabled)

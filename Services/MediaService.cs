@@ -185,7 +185,7 @@ namespace DynamicIsland
                     var bmp = await LoadArtAsync(p.Thumbnail);
                     Art = bmp;
                     Accent = bmp != null ? AccentOf(bmp) : Colors.White;
-                    SoundCloud = DetectSoundCloud(AppId, Title);
+                    Provider = DetectProvider(AppId, Title);
                 }
             }
             catch (Exception ex) { Program.Log(ex); }
@@ -270,38 +270,71 @@ namespace DynamicIsland
             catch { }
         }
 
-        /// <summary>Läuft gerade SoundCloud (App oder Browser-Tab)? Dann heißt die Quelle „SoundCloud“.</summary>
-        public bool SoundCloud { get; private set; }
+        /// <summary>Erkannter Musikdienst (App oder Browser-Tab), z. B. „YouTube Music“, „Deezer“; null = unbekannt.</summary>
+        public string Provider { get; private set; }
+        public bool SoundCloud => Provider == "SoundCloud";
         public static readonly Color SoundCloudOrange = Color.FromRgb(0xFF, 0x55, 0x00);
+        /// <summary>Markenfarbe des erkannten Dienstes (null = unbekannt).</summary>
+        public Color? ProviderColor => Providers.Where(p => p.Name == Provider).Select(p => (Color?)p.Color).FirstOrDefault();
 
-        public string AppName => SoundCloud ? "SoundCloud" : NameOf(AppId);
+        public string AppName => Provider ?? NameOf(AppId);
 
         static readonly string[] Browsers = { "chrome", "msedge", "firefox", "opera", "brave", "vivaldi", "arc", "zen" };
 
-        /// <summary>SoundCloud im Browser erkennen: ein Browserfenster mit „SoundCloud“ im Titel, in dem der Songtitel steht.</summary>
-        static bool DetectSoundCloud(string appId, string title)
+        // Musikdienste: Kennung im App-Namen (Desktop-App) und Text im Fenstertitel (Browser-Tab).
+        // Reihenfolge zählt: „YouTube Music“ vor „YouTube“.
+        static readonly (string Name, string[] Ids, string[] Titles, Color Color)[] Providers =
+        {
+            ("YouTube Music", new[] { "youtubemusic", "youtube music", "ytmdesktop" }, new[] { "YouTube Music" }, Color.FromRgb(0xFF, 0x00, 0x33)),
+            ("SoundCloud",    new[] { "soundcloud" },                     new[] { "SoundCloud" },    Color.FromRgb(0xFF, 0x55, 0x00)),
+            ("Apple Music",   new[] { "applemusic", "itunes", "cider" },  new[] { "Apple Music" },   Color.FromRgb(0xFA, 0x2D, 0x48)),
+            ("Deezer",        new[] { "deezer" },                         new[] { "Deezer" },        Color.FromRgb(0xA2, 0x38, 0xFF)),
+            ("TIDAL",         new[] { "tidal" },                          new[] { "TIDAL" },         Color.FromRgb(0xF2, 0xF2, 0xF2)),
+            ("Amazon Music",  new[] { "amazonmusic", "amazon music" },    new[] { "Amazon Music" },  Color.FromRgb(0x25, 0xD1, 0xDA)),
+            ("Qobuz",         new[] { "qobuz" },                          new[] { "Qobuz" },         Color.FromRgb(0x2E, 0x8B, 0xFF)),
+            ("Bandcamp",      new[] { "bandcamp" },                       new[] { "Bandcamp" },      Color.FromRgb(0x1D, 0xA0, 0xC3)),
+            ("Mixcloud",      new[] { "mixcloud" },                       new[] { "Mixcloud" },      Color.FromRgb(0x5A, 0x6E, 0xF5)),
+            ("Audiomack",     new[] { "audiomack" },                      new[] { "Audiomack" },     Color.FromRgb(0xFF, 0xA2, 0x00)),
+            ("Pandora",       new[] { "pandora" },                        new[] { "Pandora" },       Color.FromRgb(0x36, 0x68, 0xFF)),
+            ("Napster",       new[] { "napster" },                        new[] { "Napster" },       Color.FromRgb(0x2D, 0x9C, 0xF0)),
+            ("TuneIn",        new[] { "tunein" },                         new[] { "TuneIn" },        Color.FromRgb(0x14, 0xD8, 0xCC)),
+            ("Plexamp",       new[] { "plexamp" },                        new string[0],             Color.FromRgb(0xE5, 0xA0, 0x0D)),
+            ("VLC",           new[] { "vlc" },                            new string[0],             Color.FromRgb(0xFF, 0x88, 0x00)),
+            ("foobar2000",    new[] { "foobar2000" },                     new string[0],             Color.FromRgb(0xC8, 0xC8, 0xC8)),
+            ("MusicBee",      new[] { "musicbee" },                       new string[0],             Color.FromRgb(0xF5, 0xC5, 0x18)),
+            ("AIMP",          new[] { "aimp" },                           new string[0],             Color.FromRgb(0xFF, 0x8C, 0x1A)),
+            ("Winamp",        new[] { "winamp" },                         new string[0],             Color.FromRgb(0xF0, 0x9A, 0x1A)),
+            ("YouTube",       new string[0],                              new[] { "YouTube" },       Color.FromRgb(0xFF, 0x00, 0x00)),
+        };
+
+        /// <summary>Musikdienst erkennen: erst am App-Namen, im Browser am Fenstertitel des Tabs, in dem der Songtitel steht.</summary>
+        static string DetectProvider(string appId, string title)
         {
             var id = (appId ?? "").ToLowerInvariant();
-            if (id.Contains("soundcloud")) return true;
-            if (string.IsNullOrWhiteSpace(title) || !Browsers.Any(b => id.Contains(b))) return false;
+            if (id.Contains("spotify")) return null;   // Spotify hat eigenen Namen/Player
+            foreach (var p in Providers)
+                if (p.Ids.Any(x => id.Contains(x))) return p.Name;
+            if (string.IsNullOrWhiteSpace(title) || !Browsers.Any(b => id.Contains(b))) return null;
+            var part = title.Length > 40 ? title.Substring(0, 40) : title;
             try
             {
-                foreach (var p in System.Diagnostics.Process.GetProcesses())
+                foreach (var proc in System.Diagnostics.Process.GetProcesses())
                 {
                     try
                     {
-                        string pn = p.ProcessName.ToLowerInvariant();
+                        string pn = proc.ProcessName.ToLowerInvariant();
                         if (!Browsers.Any(b => pn.StartsWith(b))) continue;
-                        string wt = p.MainWindowTitle ?? "";
-                        if (wt.IndexOf("SoundCloud", StringComparison.OrdinalIgnoreCase) >= 0
-                            && wt.IndexOf(title.Length > 40 ? title.Substring(0, 40) : title, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                        string wt = proc.MainWindowTitle ?? "";
+                        if (wt.IndexOf(part, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        foreach (var p in Providers)
+                            if (p.Titles.Any(t => wt.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0)) return p.Name;
                     }
                     catch { }
-                    finally { p.Dispose(); }
+                    finally { proc.Dispose(); }
                 }
             }
             catch { }
-            return false;
+            return null;
         }
 
         public static string NameOf(string appId)
@@ -314,6 +347,10 @@ namespace DynamicIsland
                 if (id.IndexOf("AppleMusic", StringComparison.OrdinalIgnoreCase) >= 0) return "Apple Music";
                 if (id.IndexOf("firefox", StringComparison.OrdinalIgnoreCase) >= 0) return "Firefox";
                 if (id.IndexOf("ZuneMusic", StringComparison.OrdinalIgnoreCase) >= 0) return "Medienwiedergabe";
+                foreach (var p in Providers)   // bekannte Musik-Apps mit schönem Namen (Deezer, TIDAL, VLC …)
+                    if (p.Ids.Any(x => id.IndexOf(x, StringComparison.OrdinalIgnoreCase) >= 0)) return p.Name;
+                if (id.IndexOf("opera", StringComparison.OrdinalIgnoreCase) >= 0) return "Opera";
+                if (id.IndexOf("brave", StringComparison.OrdinalIgnoreCase) >= 0) return "Brave";
                 var bang = id.LastIndexOf('!');
                 if (bang >= 0) id = id.Substring(bang + 1);
                 if (id.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) id = id.Substring(0, id.Length - 4);

@@ -89,6 +89,8 @@ namespace DynamicIsland
                 g.Glyph = "✻";
                 g.GlyphFont = Ui.SymbolFont;
                 g.Accent = level >= 95 ? Ui.Red : Ui.Orange;
+                var logoCol = g.Accent;
+                g.IconFactory = sz => Logos.Claude(sz, 1, logoCol);
                 g.Title = "Claude: " + name + " bei " + Math.Round(p) + " %";
                 g.Subtitle = (level >= 95 ? "Fast aufgebraucht" : "Schon viel genutzt") + when;
                 g.Progress = Math.Min(1, p / 100);
@@ -458,13 +460,23 @@ namespace DynamicIsland
             Priority = 60;
             Glyph = "✻";               // ✻ (kein Emoji – das ✳ zeichnet Windows als buntes, abgeschnittenes Emoji)
             GlyphFont = Ui.SymbolFont;
-            Accent = ClaudeTracker.Orange;
+            Accent = DoneColor();
+            // echtes Claude-Logo in der eingestellten Farbe, solange Claude arbeitet (wartet/fertig: ! bzw. ✓)
+            IconFactory = s => State == ClaudeState.Working ? Logos.Claude(s, 1, DoneColor()) : null;
             CompactW = 310;
             Ticker = _ => Tick();
             Tick();
         }
 
         public override void OnRemoved() => Removed = true;
+
+        /// <summary>Nach dem Verschwinden wieder anzeigen (Antippen kurz danach).</summary>
+        public void Revive(double seconds)
+        {
+            Removed = false;
+            Finished = false;
+            ExpiresAt = DateTime.Now.AddSeconds(seconds);
+        }
         /// <summary>Gesprächsverlauf von Claude Code (aus den Hooks) – verrät, ob mit Esc abgebrochen wurde.</summary>
         public string Transcript { get; set; } = "";
         public string Project => project;
@@ -483,9 +495,9 @@ namespace DynamicIsland
         System.Windows.Media.RotateTransform arcSpin;
         ClaudeState bubbleState = (ClaudeState)(-1);
 
-        /// <summary>Farbe für „fertig“ – die bei „Claude ist fertig“ eingestellte Farbe (setzt die Island).</summary>
+        /// <summary>Claude-Farbe – die bei „Claude ist fertig“ eingestellte Farbe (setzt die Island); gilt für Kreis, Logo und „fertig“.</summary>
         public static Func<Color> DoneColor = () => Ui.Green;
-        Color StateColor => State == ClaudeState.Working ? ClaudeTracker.Orange : State == ClaudeState.Waiting ? Ui.Yellow : DoneColor();
+        Color StateColor => State == ClaudeState.Waiting ? Ui.Yellow : DoneColor();
 
         public override FrameworkElement BuildMinimal()
         {
@@ -745,7 +757,7 @@ namespace DynamicIsland
             switch (State)
             {
                 case ClaudeState.Working:
-                    Accent = ClaudeTracker.Orange;
+                    Accent = DoneColor();
                     Glyph = "✻";
                     break;
                 case ClaudeState.Waiting:

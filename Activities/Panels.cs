@@ -362,6 +362,7 @@ namespace DynamicIsland
             new DashTile { Key = "player",     Label = "Player",        Glyph = "\uE8D6", Tint = Ui.Pink,   Run = h => h.ShowPlayer() },
             new DashTile { Key = "apps",       Label = "Apps",          Glyph = "\uE7C4", Tint = Ui.Blue,   Run = h => h.ShowApps() },
             new DashTile { Key = "clipboard",  Label = "Zwischenablage", Glyph = "\uE77F", Tint = Ui.Teal,  Run = h => h.ShowClipboardHistory() },
+            new DashTile { Key = "messages",   Label = "Nachrichten",   Glyph = "\uE8BD", Tint = Ui.Blue,  Run = h => h.ShowMessageHistory() },
             new DashTile { Key = "brightness", Label = "Helligkeit",    Glyph = "\uE706", Tint = Ui.Yellow, Run = h => h.ShowBrightness() },
             new DashTile { Key = "airpods",    Label = "Bluetooth",     Glyph = "\uE702", Tint = Ui.Blue,   Run = h => h.ShowBluetooth() },
             new DashTile { Key = "weather",    Label = "Wetter",        Glyph = WeatherActivity.Glyph, Tint = Ui.Teal, Run = h => h.ShowWeather() },
@@ -395,7 +396,8 @@ namespace DynamicIsland
             Height = size,
             CornerRadius = new CornerRadius(size * 0.29),
             Background = bg ?? Ui.Faint,
-            Child = t.Emoji ? EmojiGlyph(t.Glyph, size * 0.42) : Ui.Glyph(t.Glyph, size * 0.38, Ui.Br(t.Tint))
+            Child = t.Key == "claudelimits" ? Logos.Claude(size * 0.46, 1, t.Tint)   // echtes Claude-Logo
+                  : t.Emoji ? EmojiGlyph(t.Glyph, size * 0.42) : Ui.Glyph(t.Glyph, size * 0.38, Ui.Br(t.Tint))
         };
 
         // Emoji sitzen in ihrer Schrift tiefer als Symbole – feste Zeilenhöhe, damit sie mittig stehen
@@ -469,6 +471,102 @@ namespace DynamicIsland
                 list.Children.Add(row);
             }
             root.Children.Add(host.ClipHistory.Count > 0 ? Ui.Group(list, new Thickness(4)) : (UIElement)list);
+            return root;
+        }
+    }
+
+    /// <summary>Eine empfangene Nachricht für den Verlauf (nur im Arbeitsspeicher).</summary>
+    public sealed class MsgItem
+    {
+        public string App, Aumid, Title, Body, IconUrl;
+        public bool Call, IsDiscord, IsWhatsApp;
+        public Color Accent;
+        public DateTime At = DateTime.Now;
+    }
+
+    /// <summary>Nachrichten-Verlauf: die letzten Mitteilungen mit App-Logo; Antippen öffnet die App.</summary>
+    public sealed class MessagesActivity : Activity
+    {
+        const int MaxRows = 30;
+        readonly IslandWindow host;
+
+        public MessagesActivity(IslandWindow h)
+        {
+            host = h;
+            Id = "messages";
+            Priority = 1;
+        }
+
+        int Rows => Math.Max(1, Math.Min(5, host.MsgHistory.Count));
+        public override double CompactWidth => 220;
+        public override Size ExpandedSize => new Size(460, 74 + Rows * 44);
+
+        public override FrameworkElement BuildCompact() =>
+            Ui.Row3(Ui.HStack(7, Ui.Glyph("", 14, Ui.Br(Ui.Blue)), Ui.Text("Nachrichten", 13, Ui.White)), null, null, new Thickness(13, 0, 15, 0));
+
+        public override FrameworkElement BuildMinimal() => Ui.Glyph("", 14, Ui.Br(Ui.Blue));
+
+        static FrameworkElement AppIcon(MsgItem m, double s)
+        {
+            try
+            {
+                var logo = AppIcons.Get(m.Aumid, m.App);
+                if (logo != null) return AppIcons.Element(logo, s);
+            }
+            catch { }
+            if (m.IsDiscord) return Logos.Discord(s * 0.85);
+            return Ui.Glyph(m.Call ? "" : "", s * 0.6, Ui.Br(m.Accent));
+        }
+
+        public override FrameworkElement BuildExpanded()
+        {
+            var n = host.MsgHistory.Count;
+            var root = new Grid { Margin = Ui.PageMargin };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.Children.Add(Ui.PageHead("Nachrichten", n > 0 ? n + (n == 1 ? " Nachricht" : " Nachrichten") : null,
+                ("", "Leeren", n > 0 ? host.ClearMsgHistory : (Action)null)));
+
+            var list = new StackPanel();
+            if (n == 0)
+            {
+                var empty = Ui.Text("Noch keine Nachrichten", 12.5, Ui.Dim, false);
+                empty.Margin = new Thickness(0, 12, 0, 12);
+                list.Children.Add(empty);
+            }
+            foreach (var m in host.MsgHistory.Take(MaxRows))
+            {
+                var item = m;
+                var row = new Border { Height = 44, CornerRadius = new CornerRadius(10), Background = Brushes.Transparent, Cursor = Cursors.Hand, Padding = new Thickness(8, 0, 8, 0) };
+                var icon = new Grid { Width = 30, Height = 30, VerticalAlignment = VerticalAlignment.Center };
+                var ic = AppIcon(item, 26);
+                ic.HorizontalAlignment = HorizontalAlignment.Center; ic.VerticalAlignment = VerticalAlignment.Center;
+                icon.Children.Add(ic);
+                var who = string.IsNullOrWhiteSpace(item.Title) ? item.App : item.Title;
+                var what = string.IsNullOrWhiteSpace(item.Body) ? (item.Call ? "Anruf" : item.App) : item.Body.Replace('\n', ' ');
+                var top = Ui.Text(who ?? "", 13, Ui.White, true);
+                var sub = Ui.Text(what ?? "", 12, Ui.Soft, false);
+                var texts = Ui.VStack(1, top, sub);
+                texts.Margin = new Thickness(10, 0, 8, 0);
+                texts.VerticalAlignment = VerticalAlignment.Center;
+                var meta = Ui.VStack(1, Ui.Text(item.At.ToString("HH:mm"), 11, Ui.Dim, false),
+                    Ui.Text(item.App ?? "", 10.5, Ui.Br(item.Accent), false));
+                meta.VerticalAlignment = VerticalAlignment.Center;
+                foreach (var t in meta.Children.OfType<TextBlock>()) { t.HorizontalAlignment = HorizontalAlignment.Right; t.MaxWidth = 90; }
+                row.Child = Ui.Row3(icon, texts, meta, new Thickness(0));
+                row.ToolTip = "App öffnen";
+                row.MouseEnter += (o, e) => row.Background = Ui.Br(Colors.White, 22);
+                row.MouseLeave += (o, e) => row.Background = Brushes.Transparent;
+                row.MouseLeftButtonDown += (o, e) => e.Handled = true;
+                Ui.Pressable(row, 0.98);
+                row.MouseLeftButtonUp += (o, e) => { e.Handled = true; host.OpenMessage(item); };
+                list.Children.Add(row);
+            }
+            // passt nicht alles in die Island: Liste scrollt (Mausrad über der Liste)
+            var scroll = new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Focusable = false };
+            var body = n > 0 ? Ui.Group(scroll, new Thickness(4)) : (FrameworkElement)scroll;
+            Grid.SetRow(body, 1);
+            root.Children.Add(body);
             return root;
         }
     }

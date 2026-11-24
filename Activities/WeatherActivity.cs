@@ -44,7 +44,7 @@ namespace DynamicIsland
         public override FrameworkElement BuildExpanded()
         {
             shown = W.LastUpdate;
-            var root = new StackPanel { Margin = new Thickness(22, 14, 22, 8) };
+            var root = new StackPanel { Margin = new Thickness(22, 10, 22, 6) };
             if (!W.HasData)
             {
                 var msg = Ui.Text(string.IsNullOrEmpty(W.Error) ? "Wetter wird geladen …" : W.Error, 13.5, Ui.Dim, false);
@@ -60,10 +60,16 @@ namespace DynamicIsland
             }
 
             bool clean = host.CleanPage(this);
+            if (selectedDay.HasValue)
+            {
+                var day = W.Days.FirstOrDefault(x => x.Date.Date == selectedDay.Value);
+                if (day != null) return BuildDay(day, clean);
+                selectedDay = null;
+            }
 
             // Kopf: Symbol, Temperatur, Ort + Beschreibung
-            var big = WeatherIcon.Create(W.Code, W.IsDay, clean ? 50 : 46);
-            var temp = Ui.Text(WeatherService.Deg(W.Temp), clean ? 42 : 40, Ui.White);
+            var big = WeatherIcon.Create(W.Code, W.IsDay, clean ? 46 : 42);
+            var temp = Ui.Text(WeatherService.Deg(W.Temp), clean ? 40 : 36, Ui.White);
             temp.FontWeight = FontWeights.SemiBold;
             temp.Margin = new Thickness(10, -4, 14, 0);
             var today = W.Days.FirstOrDefault();
@@ -80,34 +86,90 @@ namespace DynamicIsland
             var head = Ui.HStack(0, big, temp, info);
             root.Children.Add(head);
 
-            // nächste Stunden (aufgeräumt: 5 statt 6, ohne Regen-Prozente)
-            int n = clean ? 5 : 6;
-            var hours = new UniformGrid { Columns = n, Rows = 1 };
-            foreach (var h in W.Hours.Take(n))
+
+            // Wochentage – antippen öffnet die Stunden dieses Tages
+            int nd = Math.Min(W.Days.Count, clean ? 6 : 7);
+            var days = new UniformGrid { Columns = Math.Max(1, nd), Rows = 1 };
+            foreach (var d in W.Days.Take(nd))
             {
-                bool now = h.Time.Hour == DateTime.Now.Hour && h.Time.Date == DateTime.Today;
-                var cell = Ui.VStack(clean ? 3 : 2,
-                    Center(Ui.Text(now ? "Jetzt" : h.Time.ToString("ddd", Ui.De).TrimEnd('.') + " " + h.Time.ToString("HH") + (clean ? "" : " Uhr"), clean ? 12.5 : 11, now ? Ui.White : Ui.Dim, now)),   // mit Tagesname (So 19)
-                    Center(WeatherIcon.Create(h.Code, h.Day, clean ? 22 : 20)),
-                    Center(Ui.Text(WeatherService.Deg(h.Temp), clean ? 14.5 : 13, Ui.White)));
-                if (!clean && h.Rain >= 30) cell.Children.Add(Center(Ui.Text(h.Rain + " %", 10, Ui.Br(Ui.Teal), false)));
-                hours.Children.Add(cell);
+                var dd = d;
+                bool isToday = d.Date.Date == DateTime.Today;
+                var cell = Ui.VStack(3,
+                    Center(Ui.Text(isToday ? "Heute" : d.Date.ToString("ddd", Ui.De).TrimEnd('.'), clean ? 12.5 : 12, isToday ? Ui.White : Ui.Dim, isToday)),
+                    Center(WeatherIcon.Create(d.Code, true, clean ? 24 : 22)),
+                    Center(Ui.HStack(4, Ui.Text(WeatherService.Deg(d.Max), clean ? 13 : 12.5, Ui.White), Ui.Text(WeatherService.Deg(d.Min), clean ? 12.5 : 12, Ui.Dim, false))));
+                days.Children.Add(Tappable(cell, () => OpenDay(dd.Date), "Stunden anzeigen"));
             }
-            root.Children.Add(new Border { CornerRadius = new CornerRadius(16), Background = Ui.Br(Colors.White, 16), Padding = new Thickness(4, clean ? 10 : 8, 4, clean ? 10 : 8), Margin = new Thickness(0, clean ? 14 : 10, 0, 0), Child = hours });
-            if (clean) return root;   // aufgeräumt: ohne Tageszeile
-            // nächste Tage mit vollem Tagesnamen (Montag, Dienstag, …)
-            var days = new UniformGrid { Columns = 3, Rows = 1, Margin = new Thickness(0, 7, 0, 0) };
-            foreach (var d in W.Days.Skip(1).Take(3))
-            {
-                var row = Ui.HStack(clean ? 4 : 5,
-                    Ui.Text(d.Date.ToString("dddd", Ui.De), clean ? 13 : 12, Ui.Dim, false),
-                    WeatherIcon.Create(d.Code, true, clean ? 18 : 16),
-                    Ui.Text(WeatherService.Deg(d.Max) + (clean ? "/" : " / ") + WeatherService.Deg(d.Min), clean ? 13 : 12, Ui.White, clean));
-                row.HorizontalAlignment = HorizontalAlignment.Center;
-                days.Children.Add(row);
-            }
-            root.Children.Add(days);
+            // Stunden gibt es nur auf Knopfdruck: einen Tag antippen
+            root.Children.Add(new Border { CornerRadius = new CornerRadius(16), Background = Ui.Br(Colors.White, 16), Padding = new Thickness(4, 6, 4, 6), Margin = new Thickness(0, 10, 0, 0), Child = days });
             return root;
+        }
+
+        // ---------- Tagesansicht: Stunden eines Tages ----------
+        DateTime? selectedDay;
+
+        void OpenDay(DateTime d) { selectedDay = d.Date; host.Rebuild(this); }
+        void CloseDay() { selectedDay = null; host.Rebuild(this); }
+
+        FrameworkElement BuildDay(WeatherDay day, bool clean)
+        {
+            var root = new StackPanel { Margin = new Thickness(22, 12, 22, 8) };
+            bool isToday = day.Date.Date == DateTime.Today;
+            // Kopf: zurück, Tag, Beschreibung, Höchst/Tiefst
+            var back = Ui.RoundButton("", 12, CloseDay, 28);
+            back.ToolTip = "Zurück zur Übersicht";
+            back.VerticalAlignment = VerticalAlignment.Center;
+            var title = Ui.VStack(1,
+                Ui.Text(isToday ? "Heute" : day.Date.ToString("dddd, d. MMMM", Ui.De), 15, Ui.White),
+                Ui.Text(WeatherService.Text(day.Code) + " · " + WeatherService.Deg(day.Max) + " / " + WeatherService.Deg(day.Min) +
+                        (day.Rain >= 20 ? " · Regen " + day.Rain + " %" : ""), 12, Ui.Dim, false));
+            title.Margin = new Thickness(10, 0, 0, 0);
+            title.VerticalAlignment = VerticalAlignment.Center;
+            var icon = WeatherIcon.Create(day.Code, true, 30);
+            icon.VerticalAlignment = VerticalAlignment.Center;
+            var head = new Grid();
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(title, 1); Grid.SetColumn(icon, 2);
+            head.Children.Add(back); head.Children.Add(title); head.Children.Add(icon);
+            root.Children.Add(head);
+
+            // heute: ab jetzt jede Stunde; andere Tage: alle zwei Stunden über den ganzen Tag
+            var hrs = isToday
+                ? W.AllHours.Where(x => x.Time >= DateTime.Now.AddMinutes(-30) && x.Time.Date == day.Date.Date).Take(12).ToList()
+                : W.AllHours.Where(x => x.Time.Date == day.Date.Date && x.Time.Hour % 2 == 0).Take(12).ToList();
+            if (isToday && hrs.Count < 6)   // spät am Abend: mit den ersten Stunden von morgen auffüllen
+                hrs = W.AllHours.Where(x => x.Time >= DateTime.Now.AddMinutes(-30)).Take(12).ToList();
+            var grid = new UniformGrid { Columns = 6, Rows = hrs.Count > 6 ? 2 : 1 };
+            foreach (var h in hrs)
+            {
+                bool now = isToday && h.Time.Hour == DateTime.Now.Hour && h.Time.Date == DateTime.Today;
+                var cell = Ui.VStack(1,
+                    Center(Ui.Text(now ? "Jetzt" : h.Time.ToString("HH") + " Uhr", 11, now ? Ui.White : Ui.Dim, now)),
+                    Center(WeatherIcon.Create(h.Code, h.Day, 18)),
+                    Center(Ui.Text(WeatherService.Deg(h.Temp), 12.5, Ui.White)));
+                if (!clean && h.Rain >= 30) cell.Children.Add(Center(Ui.Text(h.Rain + " %", 9.5, Ui.Br(Ui.Teal), false)));
+                cell.Margin = new Thickness(0, 3, 0, 3);
+                grid.Children.Add(cell);
+            }
+            root.Children.Add(new Border { CornerRadius = new CornerRadius(16), Background = Ui.Br(Colors.White, 16), Padding = new Thickness(4, 6, 4, 6), Margin = new Thickness(0, 10, 0, 0), Child = grid });
+            // irgendwo auf die Island tippen → zurück zum Wetter
+            var hit = new Border { Background = Brushes.Transparent, Child = root, Cursor = System.Windows.Input.Cursors.Hand, ToolTip = "Antippen: zurück zum Wetter" };
+            hit.MouseLeftButtonDown += (o, e) => e.Handled = true;
+            hit.MouseLeftButtonUp += (o, e) => { e.Handled = true; CloseDay(); };
+            return hit;
+        }
+
+        /// <summary>Antippbare Fläche mit Hover (für die Wochentage).</summary>
+        static Border Tappable(FrameworkElement content, Action tap, string tip)
+        {
+            var b = new Border { CornerRadius = new CornerRadius(10), Background = Brushes.Transparent, Padding = new Thickness(2, 4, 2, 4), Margin = new Thickness(1, 0, 1, 0), Cursor = System.Windows.Input.Cursors.Hand, Child = content, ToolTip = tip };
+            b.MouseEnter += (o, e) => b.Background = Ui.Br(Colors.White, 22);
+            b.MouseLeave += (o, e) => b.Background = Brushes.Transparent;
+            b.MouseLeftButtonDown += (o, e) => e.Handled = true;
+            b.MouseLeftButtonUp += (o, e) => { e.Handled = true; tap(); };
+            return b;
         }
 
         static FrameworkElement Center(FrameworkElement e) { e.HorizontalAlignment = HorizontalAlignment.Center; return e; }
