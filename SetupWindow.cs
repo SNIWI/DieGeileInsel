@@ -51,6 +51,7 @@ namespace DynamicIsland
             new Page { Group = "Persönlich",        Key = "shortcuts", Title = "Kurzbefehle",  Glyph = "", Tint = Ui.Purple, Subtitle = "Programme, Ordner und Webseiten mit einem Klick" },
             new Page { Group = "Medien & Geräte",   Key = "spotify",   Title = "Spotify",      Glyph = "\uE8D6", Tint = SpotifyActivity.Green, Subtitle = "Eingebauter Player mit deinem Spotify-Konto" },
             new Page { Group = "Medien & Geräte",   Key = "discord",   Title = "Discord",      Glyph = "", Tint = DiscordVoiceActivity.Blurple, Subtitle = "Nachrichten und Sprach-Overlay" },
+            new Page { Group = "Medien & Geräte",   Key = "teams",     Title = "Teams",        Glyph = "\uE716", Tint = Logos.TeamsPurple, Subtitle = "Besprechungen steuern: Mikro, Kamera, Hand, Reaktionen" },
             new Page { Group = "Medien & Geräte",   Key = "airpods",   Title = "AirPods",      Glyph = "\uE7F6", Tint = Color.FromRgb(0x63, 0x63, 0x66), Subtitle = "Akku, Ohrerkennung und automatisches Umschalten" },
             new Page { Group = "Planen",            Key = "calendar",  Title = "Kalender",     Glyph = "\uE787", Tint = Ui.Red,    Subtitle = "Termine anzeigen, erinnern und ansagen" },
             new Page { Group = "Planen",            Key = "todo",      Title = "To Do & Erinnerungen", Glyph = "\uE73A", Tint = Ui.Blue, Subtitle = "Microsoft To Do – und Apple-Erinnerungen über dein Outlook-Konto" },
@@ -71,6 +72,7 @@ namespace DynamicIsland
         StackPanel catList, shortcutList;
         readonly HashSet<CatConfig> openCats = new HashSet<CatConfig>();
         TextBlock discordStatus, notifStatus, spotifyStatus;
+        TextBlock teamsStatus;
         TextBox spotifyIdBox;
         TextBox clientIdBox;
         PasswordBox secretBox;
@@ -94,11 +96,13 @@ namespace DynamicIsland
             SourceInitialized += (o, e) => Native.UseDarkTitleBar(new WindowInteropHelper(this).Handle);
             ContentRendered += (o, e) => { Activate(); Topmost = false; };
             host.Discord.StatusChanged += OnDiscordStatus;
+            host.Teams.StatusChanged += OnTeamsStatus;
             host.Spotify.StatusChanged += OnSpotifyStatus;
             host.Todo.StatusChanged += OnTodoStatus;
             Closed += (o, e) =>
             {
                 host.Discord.StatusChanged -= OnDiscordStatus;
+                host.Teams.StatusChanged -= OnTeamsStatus;
                 host.Spotify.StatusChanged -= OnSpotifyStatus;
                 host.Todo.StatusChanged -= OnTodoStatus;
                 SaveSpotifyId();
@@ -155,6 +159,7 @@ namespace DynamicIsland
             root.Children.Add(sub);
 
             discordStatus = null;
+            teamsStatus = null;
             notifStatus = null;
             spotifyStatus = null;
             spotifyIdBox = null;
@@ -178,6 +183,7 @@ namespace DynamicIsland
                 case "shortcuts": BuildShortcuts(root); break;
                 case "spotify": BuildSpotify(root); break;
                 case "discord": BuildDiscord(root); break;
+                case "teams": BuildTeams(root); break;
                 case "airpods": BuildAirPods(root); break;
                 case "pages": BuildPages(root); break;
                 case "keys": BuildKeys(root); break;
@@ -1594,6 +1600,44 @@ namespace DynamicIsland
                 "Secret und Anmeldung werden nur auf diesem PC gespeichert."));
         }
 
+        void BuildTeams(StackPanel root)
+        {
+            root.Children.Add(Header("Verbindung"));
+            var tc = new StackPanel();
+            tc.Children.Add(ToggleRow("Mit Teams verbinden", s.TeamsEnabled, v =>
+            {
+                s.TeamsEnabled = v;
+                s.Save();
+                if (v) host.Teams.Restart();
+                else host.Teams.Stop();
+            }, out var teamsSwitch));
+            tc.Children.Add(Divider());
+            teamsStatus = StatusText(host.Teams.Status);
+            tc.Children.Add(teamsStatus);
+            tc.Children.Add(Divider());
+            tc.Children.Add(ButtonRow(
+                FilledSmall("Koppeln", () =>
+                {
+                    if (!s.TeamsEnabled)
+                    {
+                        s.TeamsEnabled = true;
+                        s.Save();
+                        teamsSwitch?.Set(true);
+                        host.Teams.Restart();
+                    }
+                    host.Teams.Pair();
+                }),
+                SmallButton("Kopplung aufheben", () => host.Teams.Unpair(), true)));
+            root.Children.Add(Card(tc));
+            root.Children.Add(Footer(
+                "Einmalig einrichten:\n" +
+                "1. In Teams: Einstellungen → Datenschutz → „Drittanbieter-App-API“ → „API verwalten“ → „API aktivieren“.\n" +
+                "2. Oben „Mit Teams verbinden“ einschalten.\n" +
+                "3. Einer Besprechung beitreten und hier auf „Koppeln“ klicken – in Teams auf „Zulassen“ tippen.\n\n" +
+                "Danach erscheint die Teams-Seite nur, solange du in einer Besprechung bist: Mikro, Kamera, Hand heben, Chat, Weichzeichnen, " +
+                "Reaktionen und Verlassen. Strg + Alt + M schaltet in Besprechungen das Teams-Mikro. Teams-Teilnehmer gibt die Schnittstelle nicht heraus."));
+        }
+
         // =================================================================
         //  Tastenkürzel
         // =================================================================
@@ -2495,6 +2539,11 @@ namespace DynamicIsland
             }
             s.DiscordClientId = id;
             s.DiscordClientSecret = secret;
+        }
+
+        void OnTeamsStatus()
+        {
+            if (teamsStatus != null) teamsStatus.Text = host.Teams.Status;
         }
 
         void OnDiscordStatus()

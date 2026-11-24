@@ -56,6 +56,22 @@ namespace DynamicIsland
             return Wrap(c, size, opacity);
         }
 
+        public static readonly Color TeamsPurple = Color.FromRgb(0x5B, 0x5F, 0xC7);
+
+        /// <summary>Teams: lila Kachel mit weißem „T“, dahinter eine Person.</summary>
+        public static FrameworkElement Teams(double size, double opacity = 1, Color? tint = null)
+        {
+            var c = new Canvas { Width = 24, Height = 24 };
+            var light = tint ?? Color.FromRgb(0x7B, 0x83, 0xEB);
+            var head = new Ellipse { Width = 5.6, Height = 5.6, Fill = Ui.Br(light) };
+            Canvas.SetLeft(head, 15.6); Canvas.SetTop(head, 2.4);
+            c.Children.Add(head);
+            c.Children.Add(new Path { Data = Geometry.Parse("M 13,9.2 L 21.6,9.2 C 22.4,9.2 23,9.8 23,10.6 L 23,15.6 C 23,18.2 21,20 18.6,20 C 16.2,20 14.4,18.4 14,16.4 Z"), Fill = Ui.Br(light) });
+            c.Children.Add(new Rectangle { Width = 14, Height = 14, RadiusX = 2.4, RadiusY = 2.4, Fill = Ui.Br(tint ?? TeamsPurple), Margin = new Thickness(1, 5.5, 0, 0) });
+            c.Children.Add(new Path { Data = Geometry.Parse("M 4.4,9.2 L 12.6,9.2 L 12.6,11 L 9.6,11 L 9.6,17 L 7.4,17 L 7.4,11 L 4.4,11 Z"), Fill = tint.HasValue ? Brushes.Black : Brushes.White });
+            return Wrap(c, size, opacity);
+        }
+
         static FrameworkElement Wrap(Canvas c, double size, double opacity) =>
             new Viewbox { Width = size, Height = size, Child = c, Opacity = opacity, IsHitTestVisible = false };
     }

@@ -201,6 +201,10 @@ namespace DynamicIsland
         public string DiscordRefreshToken { get; set; } = "";
         public DateTime DiscordTokenExpires { get; set; }
 
+        // Microsoft Teams (lokale Drittanbieter-API, Token kommt von Teams nach der Kopplung)
+        public bool TeamsEnabled { get; set; }
+        public string TeamsToken { get; set; } = "";
+
         // AirPods (früher eigene App „AirPods Companion“, jetzt fest eingebaut)
         public bool AirPodsEnabled { get; set; } = true;
         public bool AirPodsAutoPause { get; set; } = true;
@@ -381,6 +385,7 @@ namespace DynamicIsland
             s.DiscordClientSecret ??= "";
             s.DiscordAccessToken ??= "";
             s.DiscordRefreshToken ??= "";
+            s.TeamsToken ??= "";
             s.SpotifyClientId ??= "";
             s.SpotifyAccessToken ??= "";
             s.SpotifyRefreshToken ??= "";

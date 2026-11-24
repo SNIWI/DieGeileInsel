@@ -1,8 +1,8 @@
 # Spezifikation – Die Geile Insel
 
 - **Produkt:** Dynamic Island für den Windows-Desktop
-- **Version:** 1.3.0
-- **Stand:** 23.11.2026
+- **Version:** 1.4.0
+- **Stand:** 24.11.2026
 - **Sprache der App:** Deutsch
 - **Plattform:** Windows 10 (19041+) und Windows 11, x64
 
@@ -153,7 +153,7 @@ flowchart LR
 - `Strg + Alt + Leertaste` – Übersicht
 - `Strg + Alt + K` – Kurzbefehle
 - `Strg + Alt + D` – Downloads
-- `Strg + Alt + M` – Discord-Mikro an/aus
+- `Strg + Alt + M` – Mikro an/aus (in einer Teams-Besprechung Teams, sonst Discord)
 - `Strg + Alt + V` – Zwischenablage-Verlauf
 - `Strg + Alt + A` – App-Wechsler
 - `Strg + Alt + G` – KI-Chat
@@ -329,7 +329,24 @@ flowchart LR
   - Teilnehmer als dunkle Kacheln (Avatar mittig, Name unten links in dunkler Kapsel), rotes Abzeichen bei stumm/Ton aus
   - Sprechen: groß nur grüner Rahmen um die Kachel, klein (Pille) nur grüner Ring ums Profilbild
   - Kacheln werden mit mehr Teilnehmern kleiner (bis 4 / 8 / mehr)
-- „Stream beenden“ per UI Automation im Discord-Fenster (RPC kann das nicht)
+
+### 8.7a Microsoft Teams
+
+- Lokale Teams-„Drittanbieter-App-API“ (neues Teams), WebSocket `ws://127.0.0.1:8124`, Protokoll 2.0.0
+- Einrichten: in Teams Einstellungen → Datenschutz → „Drittanbieter-App-API“ aktivieren, in der Island „Mit Teams verbinden“
+- Kopplung: nur während einer Besprechung; die Island bietet einmal „Mit Teams koppeln“ an (oder Einstellungen → Teams → „Koppeln“), Teams fragt „Zulassen“
+- Token von Teams (`tokenRefresh`) wird lokal gespeichert, danach Verbindung ohne Nachfrage; „Kopplung aufheben“ löscht ihn
+- Neuer Verbindungsversuch alle 5 s, solange Teams nicht läuft
+- Sichtbar nur, wenn gekoppelt **und** in einer Besprechung (`isInMeeting`), verschwindet beim Verlassen
+- Seite im Teams-Look:
+  - Kopf: Teams-Logo, „Besprechung“ mit Dauer, rote „REC“-Kapsel bei Aufnahme, „Du teilst“ beim Teilen, rote „Verlassen“-Taste
+  - eigene Kachel „Du“: lila Rahmen bei offenem Mikro, Stumm-Symbol, gelbe Hand
+  - Leiste wie in Teams (Symbol über Beschriftung): Kamera, Mikro, Hand, Chat, Unschärfe – aktiv lila, Mikro aus rot
+  - Reaktionen: Gefällt mir, Herz, Lachen; Kapsel „Neue Nachrichten“ öffnet den Chat
+  - Knöpfe ausgegraut, wenn Teams die Aktion nicht erlaubt (`meetingPermissions`)
+- Pille: Logo, „Besprechung“ / „Hand gehoben“ / „Du teilst“, roter Punkt bei Aufnahme, Mikro-Status, Dauer
+- Rechtsklick-Menü „Teams stummschalten“; `Strg + Alt + M` schaltet das Teams-Mikro
+- Teilnehmerliste liefert die Schnittstelle nicht
 
 ### 8.8 Geräte
 
@@ -444,12 +461,12 @@ flowchart LR
   - `?key=` – Seite öffnen (weather, calendar, todo …), `close` = zuklappen
   - `?dir=1|-1` – wischen (mit Animation)
 - **`/settings`** (GET) – Einstellungen öffnen, `?page=…&q=…` (Seite, Suche)
-- **`/demo`** (GET) – `?on=1|0`: Demo-Modus für Aufnahmen, blendet Medien-Titel, Cover und Player-Seite aus
+- **`/test`** (GET) – `?event=message|claude|timer|download|copy|device`: Ereignis-Animation vorführen (für Aufnahmen)
 
 ### 9.2 Externe Dienste (nur wenn eingerichtet)
 
 - Spotify Web API
-- Discord RPC (lokal)
+- Microsoft Teams Drittanbieter-API (lokal, `127.0.0.1:8124`)
 - Microsoft Graph (To Do, Gerätecode-Anmeldung)
 - KI-Anbieter (Gemini, OpenAI, xAI, Anthropic, Mistral, DeepSeek, OpenRouter)
 - Open-Meteo (Wetter + Geocoding)
@@ -542,14 +559,14 @@ DynamicIsland/
 │  ├─ WeatherIcon.cs       farbige Wetter-Symbole (Vektor)
 │  ├─ CalendarActivity.cs  Seite „Kalender“
 │  ├─ TodoActivity.cs, AiActivity.cs, Panels.cs, Widgets.cs
-│  ├─ DiscordVoice.cs, ReplyActivity.cs
+│  ├─ DiscordVoice.cs, TeamsActivity.cs, ReplyActivity.cs
 │  ├─ AirPodsActivity.cs, HeadphonesActivity.cs, BluetoothActivity.cs
 │  ├─ Cats.cs              Katzen, Kratzbaum
-│  ├─ Logos.cs             gezeichnete Claude-/Discord-Logos
+│  ├─ Logos.cs             gezeichnete Claude-/Discord-/Teams-Logos
 │  └─ Demos.cs             Vorführ-Aktivitäten
 ├─ Services/
 │  ├─ MediaService.cs, Spotify.cs, AudioService.cs
-│  ├─ Discord.cs, DiscordUi.cs, Notifications.cs, CallUi.cs
+│  ├─ Discord.cs, DiscordUi.cs, Teams.cs, Notifications.cs, CallUi.cs
 │  ├─ ClaudeTracker.cs, LocalApi.cs
 │  ├─ Weather.cs, CalendarService.cs, TodoService.cs, Gemini.cs, Obsidian.cs
 │  ├─ AirPods.cs, AirPodsAap.cs, Logitech.cs, SystemInfo.cs
@@ -558,7 +575,9 @@ DynamicIsland/
 │  └─ Settings.cs
 └─ docs/                   README-Grafiken
                            PNG: banner, player, claude, animationen, katzen
-                           GIF: seiten, wetter, claude-fertig, licht-effekte, lichtring, kopieren, claude-limits, logitech
+                           GIF: uebersicht, seiten, wetter, teams, ereignisse, claude-fertig, licht-effekte,
+                                lichtring, kopieren, claude-limits, logitech
+                           (aufgenommen mit Skalierung 1,35, Demo-Modus, /test und nachgebauter Teams-API)
 ```
 
 ---
@@ -574,4 +593,5 @@ DynamicIsland/
 - WPF zeichnet Emojis einfarbig – Wetter nutzt deshalb eigene Vektor-Symbole
 - Discord „Stream beenden“ hängt von der Beschriftung im Discord-Fenster ab (deutsch/englisch)
 - Antworten-Knopf per App-Namensliste (Windows verrät nicht, ob eine Mitteilung eine Antwort-Funktion hat)
-- Logitech-Ruhezustand nur im Speicher: nach Neustart der Island bis zur ersten Antwort „kein Gerät“
+- Teams: Kopplung nur während einer Besprechung möglich; Teilnehmer und Sprecher liefert die Teams-API nicht
+- Teams-Token liegt wie die Discord-Tokens unverschlüsselt in den Einstellungen

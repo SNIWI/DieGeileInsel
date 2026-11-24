@@ -16,18 +16,29 @@
 ## Überblick
 
 - Schwarze Pille oben am Bildschirm, wächst und schrumpft mit Federanimationen
-- Live-Aktivitäten: Musik, Timer, Downloads, Anrufe, Claude Code
-- Große Island mit wischbaren Seiten: Übersicht, Wetter, Kalender, Player, Bluetooth, KI, To Do
+- Live-Aktivitäten: Musik, Timer, Downloads, Anrufe, Teams-Besprechungen, Discord, Claude Code
+- Große Island mit wischbaren Seiten im Apple-Stil: Übersicht, Wetter, Kalender, Player, Bluetooth, KI, To Do
 - Komplett lokal, keine Konten nötig (außer für optionale Dienste wie Spotify oder To Do)
 - Einzelne EXE, ohne Installation und ohne .NET
 
 ## Vorschau
 
+<p align="center"><img src="docs/uebersicht.gif" alt="Übersicht" width="100%"><br><sub><b>Übersicht</b> · Datum über großer Uhr, Wetter oder Player daneben, runde Schnellzugriffe</sub></p>
+
 <table>
 <tr>
-<td width="50%" align="center"><img src="docs/seiten.gif" alt="Seiten wischen" width="100%"><br><sub><b>Seiten</b> · Übersicht, Kalender, Wetter, Kopfhörer, KI</sub></td>
-<td width="50%" align="center"><img src="docs/wetter.gif" alt="Wetter" width="100%"><br><sub><b>Wetter</b> · farbige Symbole, Stunden mit Tagesname</sub></td>
+<td width="50%" align="center"><img src="docs/seiten.gif" alt="Seiten wischen" width="100%"><br><sub><b>Seiten</b> · Übersicht, Wetter, Kopfhörer, KI – einheitliches Design</sub></td>
+<td width="50%" align="center"><img src="docs/teams.gif" alt="Teams-Besprechung" width="100%"><br><sub><b>Teams</b> · Besprechung steuern: Mikro, Kamera, Hand, Reaktionen</sub></td>
 </tr>
+<tr>
+<td width="50%" align="center"><img src="docs/wetter.gif" alt="Wetter" width="100%"><br><sub><b>Wetter</b> · farbige Symbole, Stunden mit Tagesname</sub></td>
+<td width="50%" align="center"><img src="docs/logitech.gif" alt="Maus und Tastatur" width="100%"><br><sub><b>Logitech</b> · Akku von Maus und Tastatur</sub></td>
+</tr>
+</table>
+
+<p align="center"><img src="docs/ereignisse.gif" alt="Ereignisse" width="100%"><br><sub><b>Ereignisse</b> · Nachricht, Claude fertig, Gerät verbunden – jeweils mit App-Logo</sub></p>
+
+<table>
 <tr>
 <td width="50%" align="center"><img src="docs/claude-fertig.gif" alt="Claude ist fertig" width="100%"><br><sub><b>Claude Code</b> · Laufzeit im Kreis, Meldung bei „fertig“</sub></td>
 <td width="50%" align="center"><img src="docs/licht-effekte.gif" alt="Licht-Effekte" width="100%"><br><sub><b>Licht-Effekte</b> · Umlauf, Schein, Glanz, Rahmen</sub></td>
@@ -38,11 +49,24 @@
 </tr>
 <tr>
 <td width="50%" align="center"><img src="docs/claude-limits.gif" alt="Claude-Limits" width="100%"><br><sub><b>Claude-Limits</b> · 5-Stunden- und Wochen-Limit, Warnung ab 80 %</sub></td>
-<td width="50%" align="center"><img src="docs/logitech.gif" alt="Maus und Tastatur" width="100%"><br><sub><b>Logitech</b> · Akku von Maus und Tastatur</sub></td>
+<td width="50%" align="center"></td>
 </tr>
 </table>
 
-## Neu in 1.3
+## Neu in 1.4
+
+- **Microsoft Teams**
+  - Seite im Teams-Look, nur während einer Besprechung und nach Kopplung
+  - Mikro, Kamera, Hand heben, Chat, Hintergrund-Unschärfe, Reaktionen, Verlassen
+  - Aufnahme- und Teilen-Anzeige, `Strg + Alt + M` schaltet das Teams-Mikro
+- **Neues Design**
+  - Übersicht im Apple-Stil: Datum über großer Uhr, Wetter oder Player, runde Knöpfe
+  - alle Seiten mit einheitlicher Kopfzeile, runden Knöpfen und Karten
+  - Discord-Seite im Discord-Look, grüner Rahmen um die Kachel der sprechenden Person
+- **Neue Vorschau-Animationen** in größerer Darstellung
+
+<details>
+<summary><b>Neu in 1.3</b></summary>
 
 - **Wetter und Kalender als eigene Seiten**
   - einzeln an- und abschaltbar
@@ -60,6 +84,7 @@
   - Antworten-Knopf nur noch bei Chat-Apps
   - Kalender zeigt Ladefehler statt „Wird geladen …“
   - keine „-0°“-Anzeige mehr
+</details>
 
 <details>
 <summary><b>Neu in 1.2</b></summary>
@@ -89,6 +114,7 @@
 | **Nachrichten** | Windows-Mitteilungen mit App-Logo, Antworten aus der Island (Chat-Apps) |
 | **Anrufe** | WhatsApp, Teams, Discord annehmen oder ablehnen |
 | **Discord** | Sprachkanal mit Teilnehmern, Stummschalten, Stream beenden |
+| **Teams** | Besprechung steuern: Mikro, Kamera, Hand, Chat, Reaktionen, Verlassen |
 | **AirPods & Kopfhörer** | Akku, Ohrerkennung, Wiedergabegerät |
 | **Logitech** | Akku von Maus und Tastatur, Warnung nur bei wenig Akku |
 | **Downloads** | Browser, Steam und Epic mit Fortschritt und Restzeit |

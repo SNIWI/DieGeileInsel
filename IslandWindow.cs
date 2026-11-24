@@ -88,6 +88,7 @@ namespace DynamicIsland
 
         // Katzen, Discord, Downloads, Mitteilungen, Kurzbefehle
         public readonly DiscordService Discord;
+        public readonly TeamsService Teams;
         /// <summary>AirPods-Funktionen (früher eigene App „AirPods Companion“) – startet mit der Island.</summary>
         public AirPodsEngine AirPods;
         public readonly SpotifyService Spotify;
@@ -105,6 +106,7 @@ namespace DynamicIsland
         bool catsHover;
         DateTime lastInteraction = DateTime.Now;
         DiscordVoiceActivity voiceAct;
+        TeamsActivity teamsAct;
         SetupWindow setupWin;
         static readonly Random Rnd = new Random();
 
@@ -161,6 +163,7 @@ namespace DynamicIsland
             ClaudeActivity.DoneColor = () => EventColor("claude", Logos.ClaudeOrange);   // „fertig“ in der eingestellten Farbe statt Grün
             Weather = new WeatherService(Settings);
             Discord = new DiscordService(Settings);
+            Teams = new TeamsService(Settings);
             Spotify = new SpotifyService(Settings);
             Downloads = new DownloadWatcher(Dispatcher);
             clock = new ClockActivity(this) { Host = this };
@@ -516,6 +519,7 @@ namespace DynamicIsland
             api.Stop();
             for (int i = 1; i <= 6; i++) { try { Native.UnregisterHotKey(hwnd, i); } catch { } }
             try { Discord.Stop(); } catch { }
+            try { Teams.Stop(); } catch { }
             try { AirPods?.Dispose(); } catch { }
             try { Downloads.Stop(); } catch { }
             Settings.Save();
@@ -851,7 +855,7 @@ namespace DynamicIsland
                     // Inhalt in die einheitliche Seitengröße einpassen: Seiten oben, kleine Aktivitäten mittig,
                     // zu lange Listen scrollen (Mausrad)
                     var nat = a.ExpandedSize;
-                    bool pageLike = a == dashboard || IsPanel(a) || a is MediaActivity || a is SpotifyActivity || a is DiscordVoiceActivity;
+                    bool pageLike = a == dashboard || IsPanel(a) || a is MediaActivity || a is SpotifyActivity || a is DiscordVoiceActivity || a is TeamsActivity;
                     // Height zählt ohne Rand – sonst ragte z. B. die Kachelreihe der Startseite unten aus der Island
                     // Seiten bekommen den Platz unter den Seitensymbolen (unten keine Punkte mehr)
                     double room = PageH - NavTop;
@@ -2893,6 +2897,7 @@ namespace DynamicIsland
                 var brush = Ui.Br(tint, (byte)(op * 255));
                 if (liveAct is ClaudeActivity) icon = Logos.Claude(15, op, mono);
                 else if (liveAct is DiscordVoiceActivity) icon = Logos.Discord(16, op, mono);
+                else if (liveAct is TeamsActivity) icon = Logos.Teams(16, op, mono);
                 else if (g != null) icon = Ui.Glyph(g, 13, brush);
                 else icon = new System.Windows.Shapes.Ellipse { Width = 6.5, Height = 6.5, Fill = brush };
                 var cell = new Border
@@ -2952,6 +2957,7 @@ namespace DynamicIsland
             if (key.StartsWith("w:")) return Ui.Teal;
             if (live is ClaudeActivity) return Logos.ClaudeOrange;
             if (live is DiscordVoiceActivity) return Logos.DiscordBlurple;
+            if (live is TeamsActivity) return Logos.TeamsPurple;
             if (live is GenericActivity ga) return ga.Accent;
             if (live is TimerActivity) return Ui.Orange;
             return Ui.WhiteC;
@@ -3339,6 +3345,7 @@ namespace DynamicIsland
             var live = key.StartsWith("live:") ? activities.FirstOrDefault(x => "live:" + x.Id == key) : null;
             if (live is ClaudeActivity) return "Claude";
             if (live is DiscordVoiceActivity) return "Discord";
+            if (live is TeamsActivity) return "Teams";
             return "Aktivität";
         }
 
@@ -3478,6 +3485,10 @@ namespace DynamicIsland
             Discord.SelfVoiceChanged += () => voiceAct?.Update();
             Discord.Notification += (title, body, icon, channel) => ShowMessage("Discord", title, body, icon, channel);
             if (Settings.DiscordEnabled) Discord.Start();
+            // Teams: Seite und Pille nur, solange man gekoppelt in einer Besprechung ist
+            Teams.ActiveChanged += OnTeamsActive;
+            Teams.MeetingChanged += OnTeamsMeeting;
+            if (Settings.TeamsEnabled) Teams.Start();
             HookAirPods();
 
             Downloads.Started += OnDownloadStarted;
@@ -3488,6 +3499,46 @@ namespace DynamicIsland
 
             Notifications.Received += OnWindowsNotification;
             if (Settings.MirrorNotifications) _ = Notifications.InitAsync();
+        }
+
+        bool teamsPairAsked;
+
+        /// <summary>Noch nicht gekoppelt, aber in einer Besprechung: einmal anbieten, die Island mit Teams zu koppeln.</summary>
+        void OnTeamsMeeting()
+        {
+            teamsAct?.Update();
+            if (!Teams.Meeting.InMeeting) { teamsPairAsked = false; return; }
+            if (Teams.Paired || teamsPairAsked || !Teams.Meeting.CanPair) return;
+            teamsPairAsked = true;
+            Alert("teams-pair", 12, g =>
+            {
+                g.Banner = true;
+                g.IconFactory = s => Logos.Teams(s * 0.85);
+                g.Accent = Logos.TeamsPurple;
+                g.Title = "Mit Teams koppeln";
+                g.Subtitle = "Antippen und in Teams auf „Zulassen“ klicken";
+                g.CompactW = 430;
+                g.TapAction = () => { Teams.Pair(); return true; };
+            });
+        }
+
+        void OnTeamsActive()
+        {
+            if (Teams.Active)
+            {
+                if (teamsAct == null || !activities.Contains(teamsAct))
+                {
+                    teamsAct = new TeamsActivity(Teams);
+                    Add(teamsAct);
+                }
+                else teamsAct.Update();
+            }
+            else if (teamsAct != null)
+            {
+                teamsAct.Finished = true;
+                teamsAct = null;
+                Relayout();
+            }
         }
 
         void OnDiscordChannel()
@@ -4393,6 +4444,20 @@ namespace DynamicIsland
                 case 8: if (Settings.AiEnabled) StartOcr(); break;
                 case 9: ShowTodo(true); break;
                 case 4:
+                    // in einer Teams-Besprechung (und keinem Discord-Kanal): Teams-Mikro
+                    if (Teams.Active && Discord.Channel == null)
+                    {
+                        bool tm = !Teams.Meeting.Muted;
+                        Teams.ToggleMute();
+                        Alert("dmute", 1.8, g =>
+                        {
+                            g.Glyph = "\uE720";
+                            g.Accent = tm ? Ui.Red : Logos.TeamsPurple;
+                            g.LeftText = tm ? "Teams stumm" : "Teams-Mikro an";
+                            g.CompactW = 240;
+                        });
+                        break;
+                    }
                     if (!Discord.Connected)
                     {
                         Alert("dmute", 2, g => { g.Glyph = "\uE720"; g.Accent = Ui.Gray; g.LeftText = "Discord nicht verbunden"; g.CompactW = 270; });
@@ -5217,6 +5282,7 @@ namespace DynamicIsland
         {
             if (path.StartsWith("/claude-limits")) { Claude.HandleLimits(body); return; }   // Statuszeile: Nutzungs-Limits
             if (path.StartsWith("/logitech")) { ShowLogitech(); return; }                       // Akku von Maus & Tastatur zeigen
+            if (path.StartsWith("/test")) { var tk = q["event"] ?? "message"; TestEvent(tk, EventColor(tk, Ui.Blue)); return; }   // Ereignis-Animation vorführen (?event=claude|timer|download|copy|message|device)
             if (path.StartsWith("/demo"))                                                       // Demo-Modus für Aufnahmen: Medien (Titel, Cover) ausblenden
             {
                 Demo = q["on"] != "0";
@@ -5462,6 +5528,8 @@ namespace DynamicIsland
             cm.Items.Add(MItem(hasSw ? "Stoppuhr beenden" : "Stoppuhr", ToggleStopwatch));
             bool hasMemo = activities.OfType<VoiceMemoActivity>().Any();
             cm.Items.Add(MItem(hasMemo ? "Sprachmemo speichern" : "Sprachmemo", ToggleMemo));
+            if (Teams.Active)
+                cm.Items.Add(MItem(Teams.Meeting.Muted ? "Teams-Mikro einschalten" : "Teams stummschalten", Teams.ToggleMute));
             if (Discord.Connected)
                 cm.Items.Add(MItem(Discord.MicOff ? "Discord-Mikro einschalten" : "Discord stummschalten", Discord.ToggleMute));
             cm.Items.Add(new Separator());
