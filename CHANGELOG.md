@@ -2,7 +2,7 @@
 
 Alle wichtigen Änderungen an Die Geile Insel. Neueste Version oben.
 
-## [1.5.0] – in Arbeit
+## [1.5.0] – 24.11.2026
 
 ### Neu
 

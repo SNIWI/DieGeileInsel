@@ -1,7 +1,7 @@
 # Spezifikation – Die Geile Insel
 
 - **Produkt:** Dynamic Island für den Windows-Desktop
-- **Version:** 1.5.0 (in Arbeit, noch nicht veröffentlicht)
+- **Version:** 1.5.0
 - **Stand:** 24.11.2026
 - **Änderungen je Version:** [CHANGELOG.md](CHANGELOG.md)
 - **Sprache der App:** Deutsch
@@ -575,7 +575,7 @@ flowchart LR
   - v1.2.0 – Claude-Zeiten/-Limits korrigiert, Logitech-Ruhezustand
   - v1.3.0 – Wetter/Kalender getrennt, farbige Wetter-Symbole, Schrift und Stil der Seiten, neue Animationen
   - v1.4.0 – Microsoft Teams, neues Design, größere Vorschau-Animationen
-  - 1.5.0 (in Arbeit) – siehe [CHANGELOG.md](CHANGELOG.md)
+  - v1.5.0 – kombinierbare Animationen, neuer Lichtring, Nachrichten-Verlauf, Wetter-Tagesansicht, Musikdienste (Details: [CHANGELOG.md](CHANGELOG.md))
 
 ---
 
