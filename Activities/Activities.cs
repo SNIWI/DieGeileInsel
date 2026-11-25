@@ -23,6 +23,7 @@ namespace DynamicIsland
         Image cArt, eArt;
         Visualizer cViz, eViz, mViz;
         TextBlock cTitle;
+        string cKey;
         TextBlock eTitle, eArtist, eApp, ePos, eDur, ePlay, eVolT, eVolIcon, eShuffleG, eRepeatG;
         DragBar eSeek, eVol;
         Border eShuffle, eRepeat;
@@ -119,10 +120,11 @@ namespace DynamicIsland
             // Steuerung: Zufall · Zurück · Play/Pause · Weiter · Wiederholen
             eShuffle = SmallToggle("", m.ToggleShuffle, out eShuffleG);
             eShuffle.ToolTip = "Zufallswiedergabe";
-            var prev = Ui.RoundButton("", 18, m.Previous, 44, Brushes.Transparent);
+            Border prev = null, next = null;
+            prev = Ui.RoundButton("", 18, () => { player?.Hint(-1); PlayerUi.Nudge(prev, -1); m.Previous(); }, 44, Brushes.Transparent);
             var play = Ui.RoundButton("", 28, m.PlayPause, 52, Brushes.Transparent);
             ePlay = (TextBlock)play.Child;
-            var next = Ui.RoundButton("", 18, m.Next, 44, Brushes.Transparent);
+            next = Ui.RoundButton("", 18, () => { player?.Hint(1); PlayerUi.Nudge(next, 1); m.Next(); }, 44, Brushes.Transparent);
             eRepeat = SmallToggle("", m.CycleRepeat, out eRepeatG);
             eRepeat.ToolTip = "Wiederholen";
             var ctrl = Ui.HStack(14, eShuffle, prev, play, next, eRepeat);
@@ -171,7 +173,13 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             cViz?.Step(lvl, m.Playing);
             eViz?.Step(lvl, m.Playing);
             mViz?.Step(lvl, m.Playing);
-            if (cTitle != null) cTitle.Text = m.Title;
+            if (cTitle != null)
+            {
+                string ck = m.Title + "|" + m.Artist;
+                if (cKey != null && ck != cKey) PlayerUi.CompactChange(cArt, cTitle);
+                cKey = ck;
+                cTitle.Text = m.Title;
+            }
 
             if (eTitle == null) return;
             eTitle.Text = m.Title;

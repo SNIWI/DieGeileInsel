@@ -2,6 +2,20 @@
 
 Alle wichtigen Änderungen an Die Geile Insel. Neueste Version oben.
 
+## [Unveröffentlicht]
+
+### Neu
+
+- Antworten-Knopf pro App ein- und ausschaltbar (Einstellungen → Hinweise)
+- Licht beim Verbinden nach Akkustand: rot, gelb, grün mit einstellbaren Grenzen (Einstellungen → Animationen)
+- Player bei Webseiten: Logo und Name der Seite statt Chrome-Logo und „Google Chrome“
+- Notiz: neue Seite und Kachel zum schnellen Aufschreiben, speichert automatisch
+- Player-Animationen: Cover gleitet beim Songwechsel in Richtung Weiter/Zurück, Titel mit Unschärfe, Leuchten wechselt die Farbe fließend und atmet, Knöpfe stupsen, kleine Island federt beim Songwechsel
+
+### Geändert
+
+- Mitteilungen über Smartphone-Link standardmäßig ohne Antworten-Knopf
+
 ## [1.5.0] – 24.11.2026
 
 ### Neu

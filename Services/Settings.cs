@@ -85,6 +85,14 @@ namespace DynamicIsland
         public List<string> SeenApps { get; set; } = new List<string>();
         /// <summary>Geräte, die schon verbunden waren (für die Farbliste).</summary>
         public List<string> SeenDevices { get; set; } = new List<string>();
+        /// <summary>Antworten-Knopf pro App (App-Name → an/aus); fehlt = Standard (Chat-Apps an, Smartphone-Link aus).</summary>
+        public Dictionary<string, bool> ReplyApps { get; set; } = new Dictionary<string, bool>();
+        /// <summary>Licht beim Verbinden eines Geräts nach Akkustand färben (rot / gelb / grün).</summary>
+        public bool BatteryGlow { get; set; }
+        /// <summary>Unter diesem Akkustand rot (Prozent).</summary>
+        public int BatteryLow { get; set; } = 20;
+        /// <summary>Ab diesem Akkustand grün, dazwischen gelb (Prozent).</summary>
+        public int BatteryHigh { get; set; } = 80;
         public int LayoutVersion { get; set; }
         /// <summary>Bedienelemente: "glass" = Apple Liquid Glass, "flat" = flach.</summary>
         public string Material { get; set; } = "glass";
@@ -361,6 +369,16 @@ namespace DynamicIsland
                 int ci = s.Pages.IndexOf("calendar");
                 if (ci >= 0 && !s.Pages.Contains("weather")) s.Pages.Insert(ci, "weather");
                 s.PagesVersion = 8;
+            }
+            if (s.PagesVersion < 9)
+            {
+                // neue Seite „Notiz“ hinter To Do (sonst hinten)
+                if (!s.Pages.Contains("note"))
+                {
+                    int ti = s.Pages.IndexOf("todo");
+                    s.Pages.Insert(ti >= 0 ? ti + 1 : s.Pages.Count, "note");
+                }
+                s.PagesVersion = 9;
             }
             s.PageLooks ??= new Dictionary<string, PageLook>();
             if (s.PageFont <= 0) s.PageFont = 1.2;

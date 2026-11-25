@@ -183,9 +183,21 @@ namespace DynamicIsland
                 {
                     artKey = key;
                     var bmp = await LoadArtAsync(p.Thumbnail);
+                    Provider = DetectProvider(AppId, Title);
+                    Site = null;
+                    // Webseite im Browser: Seite erkennen; ohne echtes Cover (nur Browser-Logo) das Logo der Seite zeigen
+                    if (IsBrowser(AppId) && (Provider == null || SiteLogo.LooksLikeIcon(bmp)))
+                    {
+                        string t = Title;
+                        var domain = await Task.Run(() => SiteLogo.FindDomain(t));
+                        if (key != artKey) return;   // inzwischen anderer Titel
+                        Site = domain;
+                        if (domain != null && SiteLogo.LooksLikeIcon(bmp))
+                            bmp = await SiteLogo.GetAsync(domain) ?? bmp;
+                        if (key != artKey) return;
+                    }
                     Art = bmp;
                     Accent = bmp != null ? AccentOf(bmp) : Colors.White;
-                    Provider = DetectProvider(AppId, Title);
                 }
             }
             catch (Exception ex) { Program.Log(ex); }
@@ -277,9 +289,25 @@ namespace DynamicIsland
         /// <summary>Markenfarbe des erkannten Dienstes (null = unbekannt).</summary>
         public Color? ProviderColor => Providers.Where(p => p.Name == Provider).Select(p => (Color?)p.Color).FirstOrDefault();
 
-        public string AppName => Provider ?? NameOf(AppId);
+        /// <summary>Domain der Webseite, die im Browser spielt (z. B. „twitch.tv“); null = keine Webseite erkannt.</summary>
+        public string Site { get; private set; }
+
+        public string AppName => Provider ?? SiteName ?? NameOf(AppId);
+
+        /// <summary>Name der Webseite; bekannte Dienste in ihrer Schreibweise („YouTube“ statt „Youtube“).</summary>
+        string SiteName
+        {
+            get
+            {
+                var n = SiteLogo.NameOf(Site);
+                if (n == null) return null;
+                var known = Providers.Select(p => p.Name).FirstOrDefault(p => p.Replace(" ", "").Equals(n, StringComparison.OrdinalIgnoreCase));
+                return known ?? n;
+            }
+        }
 
         static readonly string[] Browsers = { "chrome", "msedge", "firefox", "opera", "brave", "vivaldi", "arc", "zen" };
+        static bool IsBrowser(string appId) { var id = (appId ?? "").ToLowerInvariant(); return Browsers.Any(b => id.Contains(b)); }
 
         // Musikdienste: Kennung im App-Namen (Desktop-App) und Text im Fenstertitel (Browser-Tab).
         // Reihenfolge zählt: „YouTube Music“ vor „YouTube“.

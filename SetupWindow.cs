@@ -772,6 +772,31 @@ namespace DynamicIsland
             nt.Children.Add(Divider());
             nt.Children.Add(ButtonRow(SmallButton("Windows-Einstellungen öffnen", () => IslandWindow.Open("ms-settings:privacy-notifications"))));
             root.Children.Add(Card(nt));
+
+            // ---------- Antworten pro App ----------
+            root.Children.Add(Header("Antworten-Knopf pro App"));
+            s.ReplyApps ??= new Dictionary<string, bool>();
+            s.SeenApps ??= new List<string>();
+            var ra = new StackPanel();
+            var replyNames = s.SeenApps.Concat(s.ReplyApps.Keys).Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase).ToList();
+            if (replyNames.Count == 0) ra.Children.Add(StatusText("Noch keine Nachrichten – Apps erscheinen hier nach ihrer ersten Mitteilung."));
+            for (int i = 0; i < replyNames.Count; i++)
+            {
+                var n = replyNames[i];
+                bool cur = s.ReplyApps.Where(kv => string.Equals(kv.Key, n, StringComparison.OrdinalIgnoreCase)).Select(kv => (bool?)kv.Value).FirstOrDefault()
+                           ?? IslandWindow.DefaultReply(n);
+                if (i > 0) ra.Children.Add(Divider());
+                ra.Children.Add(ToggleRow(n, cur, v =>
+                {
+                    s.ReplyApps.Keys.Where(k => string.Equals(k, n, StringComparison.OrdinalIgnoreCase)).ToList().ForEach(k => s.ReplyApps.Remove(k));
+                    if (v != IslandWindow.DefaultReply(n)) s.ReplyApps[n] = v;   // nur Abweichungen vom Standard speichern
+                    s.Save();
+                }, out _));
+            }
+            root.Children.Add(Card(ra));
+            root.Children.Add(Footer("Zeigt bei Nachrichten dieser App den Knopf „Antworten“. Standard: an bei Chat-Apps (WhatsApp, Discord, Teams, Telegram, Signal …), " +
+                                     "aus bei Smartphone-Link und allen anderen Apps."));
             root.Children.Add(Footer("Neue Nachrichten von WhatsApp, Discord, Teams und anderen Apps erscheinen oben, eingehende Anrufe größer mit grünem Hörer. " +
                                      "Mit dem Antworten-Knopf schreibst du direkt in der Island: Die App öffnet den Chat (WhatsApp über die Suche, Discord-DMs per Direktlink) " +
                                      "und sendet – oder fügt nur ein, wenn „direkt absenden“ aus ist. Andere Apps: Text wird eingefügt. " +
@@ -1047,6 +1072,34 @@ namespace DynamicIsland
             root.Children.Add(Card(NamedColorList(s.SeenDevices, s.DeviceColors, "Gerätename, z. B. soundcore Q20i", "device")));
             root.Children.Add(Footer("Gilt, wenn sich das Gerät verbindet: Licht und Symbol. Dazu zählen Bluetooth-Geräte, Controller und USB-Sticks " +
                                      "(Name = Name des Laufwerks). Ohne eigene Farbe gilt die Farbe von „Gerät verbunden“."));
+
+            // ---------- Licht nach Akkustand ----------
+            root.Children.Add(Header("Licht nach Akkustand"));
+            var bat = new StackPanel();
+            var lows = new[] { 10, 15, 20, 25, 30, 40 };
+            var highs = new[] { 50, 60, 70, 80, 90 };
+            FrameworkElement lowRow = null, highRow = null, testRow = null;
+            void SyncBat()
+            {
+                var v = s.BatteryGlow ? Visibility.Visible : Visibility.Collapsed;
+                foreach (var el in new[] { lowRow, highRow, testRow }) if (el != null) el.Visibility = v;
+            }
+            bat.Children.Add(ToggleRow("Licht beim Verbinden nach Akkustand färben", s.BatteryGlow, v => { s.BatteryGlow = v; s.Save(); SyncBat(); if (v) host.PreviewBatteryGlow(50); }, out _));
+            lowRow = new StackPanel { Children = { Divider(), SegmentRow("Rot unter", lows.Select(x => x + " %").ToArray(),
+                Math.Max(0, Array.IndexOf(lows, s.BatteryLow) < 0 ? 2 : Array.IndexOf(lows, s.BatteryLow)),
+                i => { s.BatteryLow = lows[i]; if (s.BatteryHigh <= s.BatteryLow) s.BatteryHigh = highs.First(h => h > s.BatteryLow); s.Save(); host.PreviewBatteryGlow(Math.Max(1, lows[i] - 5)); }) } };
+            highRow = new StackPanel { Children = { Divider(), SegmentRow("Grün ab", highs.Select(x => x + " %").ToArray(),
+                Math.Max(0, Array.IndexOf(highs, s.BatteryHigh) < 0 ? 3 : Array.IndexOf(highs, s.BatteryHigh)),
+                i => { s.BatteryHigh = highs[i]; s.Save(); host.PreviewBatteryGlow(highs[i]); }) } };
+            testRow = new StackPanel { Children = { Divider(), ButtonRow(
+                SmallButton("Test: wenig Akku", () => host.PreviewBatteryGlow(Math.Max(1, s.BatteryLow - 5))),
+                SmallButton("Test: mittel", () => host.PreviewBatteryGlow((s.BatteryLow + s.BatteryHigh) / 2)),
+                SmallButton("Test: voll", () => host.PreviewBatteryGlow(Math.Min(100, s.BatteryHigh + 5)))) } };
+            bat.Children.Add(lowRow); bat.Children.Add(highRow); bat.Children.Add(testRow);
+            SyncBat();
+            root.Children.Add(Card(bat));
+            root.Children.Add(Footer("Beim Verbinden eines Bluetooth-Geräts oder Controllers mit bekanntem Akku: rot unter dem ersten Wert, gelb dazwischen, grün ab dem zweiten. " +
+                                     "Das gilt für Licht und Akku-Ring und geht vor der Gerätefarbe. Geräte ohne Akkuangabe und USB-Sticks behalten ihre Farbe."));
 
             root.Children.Add(Header("Schnell einstellen"));
             var quick = new StackPanel();
@@ -1419,7 +1472,7 @@ namespace DynamicIsland
         {
             ("player", "Player", "\uE8D6"), ("sound", "Ton", "\uE767"), ("brightness", "Helligkeit", "\uE706"),
             ("clipboard", "Zwischenablage", "\uE77F"), ("apps", "Apps", "\uE7C4"), ("shortcuts", "Kurzbefehle", "\uE8A9"),
-            ("downloads", "Downloads", "\uE896"), ("bluetooth", "Bluetooth / AirPods", "\uE702"), ("ai", "Gemini", "\uE8BD"), ("weather", "Wetter", WeatherActivity.Glyph), ("calendar", "Kalender", "\uE787"), ("todo", "To Do", "\uE73A"),
+            ("downloads", "Downloads", "\uE896"), ("bluetooth", "Bluetooth / AirPods", "\uE702"), ("ai", "Gemini", "\uE8BD"), ("weather", "Wetter", WeatherActivity.Glyph), ("calendar", "Kalender", "\uE787"), ("todo", "To Do", "\uE73A"), ("note", "Notiz", NoteActivity.Glyph),
         };
 
         (string name, string glyph) PageInfo(string key)

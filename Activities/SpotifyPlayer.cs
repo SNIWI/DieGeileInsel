@@ -26,6 +26,7 @@ namespace DynamicIsland
         Image cArt, eArt;
         Visualizer cViz, eViz, mViz;
         TextBlock cTitle;
+        string cKey;
         TextBlock eTitle, eArtist, eDevice, ePos, eDur, ePlay, eHeart, eShuffleG, eRepeatG, eVolT;
         DragBar eSeek, eVol;
         string shownArt;
@@ -118,10 +119,11 @@ namespace DynamicIsland
             // Steuerung
             var shuffle = Toggle("", sp.ToggleShuffle, out eShuffleG);
             shuffle.ToolTip = "Zufallswiedergabe";
-            var prev = Ui.RoundButton("", 18, sp.Previous, 44, Brushes.Transparent);
+            Border prev = null, next = null;
+            prev = Ui.RoundButton("", 18, () => { player?.Hint(-1); PlayerUi.Nudge(prev, -1); sp.Previous(); }, 44, Brushes.Transparent);
             var play = Ui.RoundButton("", 28, sp.PlayPause, 52, Brushes.Transparent);
             ePlay = (TextBlock)play.Child;
-            var next = Ui.RoundButton("", 18, sp.Next, 44, Brushes.Transparent);
+            next = Ui.RoundButton("", 18, () => { player?.Hint(1); PlayerUi.Nudge(next, 1); sp.Next(); }, 44, Brushes.Transparent);
             var repeat = Toggle("", sp.CycleRepeat, out eRepeatG);
             repeat.ToolTip = "Wiederholen";
             var ctrl = Ui.HStack(14, shuffle, prev, play, next, repeat);
@@ -180,7 +182,13 @@ namespace DynamicIsland
             cViz?.Step(lvl, playing);
             eViz?.Step(lvl, playing);
             mViz?.Step(lvl, playing);
-            if (cTitle != null) cTitle.Text = sp.Track?.Title ?? "";
+            if (cTitle != null)
+            {
+                string ck = (sp.Track?.Id ?? sp.Track?.Title ?? "") + "|" + sp.Track?.Artist;
+                if (cKey != null && ck != cKey) PlayerUi.CompactChange(cArt, cTitle);
+                cKey = ck;
+                cTitle.Text = sp.Track?.Title ?? "";
+            }
 
             if (eTitle == null) return;
             var t = sp.Track;

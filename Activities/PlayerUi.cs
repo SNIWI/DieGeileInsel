@@ -27,19 +27,54 @@ namespace DynamicIsland
         bool? shownPlaying;
         Color shownColor;
 
+        // Songwechsel: altes Cover gleitet hinaus, neues herein (Richtung nach Weiter/Zurück)
+        readonly Image ghost;
+        readonly TranslateTransform artSlide = new TranslateTransform(), ghostSlide = new TranslateTransform();
+        readonly ScaleTransform ghostScale = new ScaleTransform(1, 1);
+        readonly SolidColorBrush glowBrush = new SolidColorBrush(Color.FromArgb(200, 0x90, 0x90, 0x98));
+        readonly ScaleTransform glowScale = new ScaleTransform(1, 1);
+        readonly BlurEffect textBlur = new BlurEffect { Radius = 0 };
+        ImageSource lastSource;
+        int hintDir = 1;
+        DateTime hintAt;
+
         public PlayerUi(Action onArtClick, string artTip)
         {
             var box = Ui.ArtBox(ArtSize, 18, out Art);
             box.Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.55, Color = Colors.Black };
+            // Cover in eine abgerundete „Bühne“ legen, damit es beim Hinein-/Hinausgleiten sauber abgeschnitten wird
+            box.Children.Remove(Art);
+            Art.Clip = null;
+            Art.RenderTransform = artSlide;
+            ghost = new Image
+            {
+                Width = ArtSize, Height = ArtSize, Stretch = Stretch.UniformToFill, Opacity = 0, IsHitTestVisible = false,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new TransformGroup { Children = { ghostScale, ghostSlide } }
+            };
+            RenderOptions.SetBitmapScalingMode(ghost, BitmapScalingMode.HighQuality);
+            var stage = new Grid { Width = ArtSize, Height = ArtSize, Clip = new RectangleGeometry(new Rect(0, 0, ArtSize, ArtSize), 18, 18) };
+            stage.Children.Add(ghost);
+            stage.Children.Add(Art);
+            box.Children.Add(stage);
             glow = new Border
             {
                 Width = ArtSize * 0.9, Height = ArtSize * 0.9,
                 CornerRadius = new CornerRadius(ArtSize * 0.45),
-                Background = Ui.Br(Colors.White, 0),
+                Background = glowBrush,
                 Effect = new BlurEffect { Radius = 34 },
                 IsHitTestVisible = false,
-                Opacity = 0.75
+                Opacity = 0.75,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = glowScale
             };
+            if (!Ui.ReduceMotion)
+            {
+                // Leuchten atmet langsam mit der Musik
+                var breathe = new DoubleAnimation(0.94, 1.08, TimeSpan.FromSeconds(2.6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+                glowScale.BeginAnimation(ScaleTransform.ScaleXProperty, breathe);
+                glowScale.BeginAnimation(ScaleTransform.ScaleYProperty, breathe);
+            }
             var host = new Grid
             {
                 Width = ArtSize, Height = ArtSize,
@@ -60,7 +95,7 @@ namespace DynamicIsland
         public FrameworkElement Layout(FrameworkElement top, FrameworkElement titleBlock, FrameworkElement seek, FrameworkElement controls)
         {
             texts = titleBlock;
-            if (texts != null) texts.RenderTransform = textSlide;
+            if (texts != null) { texts.RenderTransform = textSlide; texts.Effect = textBlur; }
             var right = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0) };
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -85,33 +120,130 @@ namespace DynamicIsland
             return g;
         }
 
+        bool waitArt;
+        DateTime waitSince;
+        /// <summary>Zum Vorführen: ±1 löst beim nächsten Takt einen Songwechsel in dieser Richtung aus.</summary>
+        public static int TestChange;
+
+        /// <summary>Weiter (+1) oder Zurück (−1) gedrückt: bestimmt, in welche Richtung der nächste Songwechsel gleitet.</summary>
+        public void Hint(int dir) { hintDir = dir < 0 ? -1 : 1; hintAt = DateTime.Now; }
+
+        int Dir => (DateTime.Now - hintAt).TotalSeconds < 5 ? hintDir : 1;
+
+        static readonly IEasingFunction Out = new CubicEase { EasingMode = EasingMode.EaseOut };
+        static readonly IEasingFunction In = new CubicEase { EasingMode = EasingMode.EaseIn };
+
+        void SongChange(bool playing)
+        {
+            int dir = Dir;
+            // Titel: gleitet aus der Richtung herein und wird dabei scharf
+            textSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(dir * 34, 0, TimeSpan.FromMilliseconds(520)) { EasingFunction = new SpringEase { Damping = 0.75 } });
+            texts?.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(360)) { EasingFunction = Out });
+            textBlur.BeginAnimation(BlurEffect.RadiusProperty, new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = Out });
+
+            if (Art.Source == lastSource && lastSource != null) { waitArt = true; waitSince = DateTime.Now; return; }
+            SlideCover(playing);
+        }
+
+        void SlideCover(bool playing)
+        {
+            int dir = Dir;
+            double d = ArtSize * 0.75;
+            var dur = TimeSpan.FromMilliseconds(520);
+            // altes Cover: gleitet hinaus, wird kleiner und blendet aus
+            if (lastSource != null)
+            {
+                ghost.Source = lastSource;
+                ghost.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(380)) { EasingFunction = In });
+                ghostSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, -dir * d, TimeSpan.FromMilliseconds(420)) { EasingFunction = In });
+                var shrink = new DoubleAnimation(1, 0.82, TimeSpan.FromMilliseconds(420)) { EasingFunction = In };
+                ghostScale.BeginAnimation(ScaleTransform.ScaleXProperty, shrink);
+                ghostScale.BeginAnimation(ScaleTransform.ScaleYProperty, shrink);
+            }
+            // neues Cover: kommt aus der anderen Seite und federt ein
+            artSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(dir * d, 0, dur) { EasingFunction = new SpringEase { Damping = 0.72 } });
+            Art.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = Out });
+            var pop = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(620) };
+            double b = playing ? 1 : 0.88;
+            pop.KeyFrames.Add(new EasingDoubleKeyFrame(b * 0.93, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(140)), Out));
+            pop.KeyFrames.Add(new EasingDoubleKeyFrame(b, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(620)), new SpringEase { Damping = 0.55 }));
+            artScale.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
+            artScale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
+            // Leuchten blitzt kurz auf
+            glow.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(playing ? 1 : 0.5, playing ? 0.75 : 0.3, TimeSpan.FromMilliseconds(900)) { EasingFunction = Out });
+            lastSource = Art.Source;
+        }
+
+        /// <summary>Weiter/Zurück-Knopf: Symbol stupst in seine Richtung (wie bei Apple Music).</summary>
+        public static void Nudge(FrameworkElement button, int dir)
+        {
+            if (Ui.ReduceMotion || button == null) return;
+            var target = (button as Border)?.Child as FrameworkElement ?? button;
+            var tt = target.RenderTransform as TranslateTransform;
+            if (tt == null || tt.IsFrozen) { tt = new TranslateTransform(); target.RenderTransform = tt; }
+            var a = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(460) };
+            a.KeyFrames.Add(new EasingDoubleKeyFrame(dir * 7, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(90)), Out));
+            a.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(460)), new SpringEase { Damping = 0.5 }));
+            tt.BeginAnimation(TranslateTransform.XProperty, a);
+        }
+
+        /// <summary>Kleine Island beim Songwechsel: Cover federt auf, Titel rollt von unten herein.</summary>
+        public static void CompactChange(FrameworkElement art, FrameworkElement title)
+        {
+            if (Ui.ReduceMotion) return;
+            if (art != null)
+            {
+                var st = art.RenderTransform as ScaleTransform;
+                if (st == null || st.IsFrozen) { st = new ScaleTransform(1, 1); art.RenderTransform = st; art.RenderTransformOrigin = new Point(0.5, 0.5); }
+                var p = new DoubleAnimation(0.55, 1, TimeSpan.FromMilliseconds(560)) { EasingFunction = new SpringEase { Damping = 0.5 } };
+                st.BeginAnimation(ScaleTransform.ScaleXProperty, p);
+                st.BeginAnimation(ScaleTransform.ScaleYProperty, p);
+                art.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.2, 1, TimeSpan.FromMilliseconds(320)));
+            }
+            if (title != null)
+            {
+                var tt = title.RenderTransform as TranslateTransform;
+                if (tt == null || tt.IsFrozen) { tt = new TranslateTransform(); title.RenderTransform = tt; }
+                tt.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(460)) { EasingFunction = new SpringEase { Damping = 0.7 } });
+                title.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(360)) { EasingFunction = Out });
+            }
+        }
+
         /// <summary>Jeden Takt: Songwechsel, Play/Pause und Farbe animieren.</summary>
         public void Animate(string trackKey, bool playing, Color accent, TextBlock playIcon)
         {
             bool motion = !Ui.ReduceMotion;
             if (accent != shownColor)
             {
+                bool firstColor = shownColor == default;
                 shownColor = accent;
-                glow.Background = Ui.Br(accent == Colors.White ? Color.FromRgb(0x90, 0x90, 0x98) : accent, 200);
+                var c = accent == Colors.White ? Color.FromRgb(0x90, 0x90, 0x98) : accent;
+                c.A = 200;
+                // Farbe des Leuchtens gleitet zum neuen Cover über statt zu springen
+                if (motion && !firstColor) glowBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(c, TimeSpan.FromMilliseconds(700)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+                else { glowBrush.BeginAnimation(SolidColorBrush.ColorProperty, null); glowBrush.Color = c; }
+            }
+            if (TestChange != 0)
+            {
+                // Vorführung (/test?event=song): Songwechsel ohne echten Titelwechsel
+                Hint(TestChange); TestChange = 0;
+                lastSource = Art.Source;
+                if (motion) { SongChange(playing); waitArt = false; SlideCover(playing); }
+                return;
             }
             if (trackKey != shownKey)
             {
                 bool first = shownKey == null;
                 shownKey = trackKey;
-                if (!first && motion)
-                {
-                    // Cover blendet über und federt, Titel gleitet von rechts herein
-                    Art.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(420)));
-                    textSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(26, 0, TimeSpan.FromMilliseconds(460)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-                    texts?.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(380)));
-                    var pop = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(520) };
-                    double b = playing ? 1 : 0.88;
-                    pop.KeyFrames.Add(new EasingDoubleKeyFrame(b * 0.92, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120))));
-                    pop.KeyFrames.Add(new EasingDoubleKeyFrame(b, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(520)), new SpringEase { Damping = 0.6 }));
-                    artScale.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
-                    artScale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
-                }
+                if (!first && motion) SongChange(playing);
             }
+            else if (waitArt)
+            {
+                // Titel kam vor dem Cover (Windows-Medien): Cover-Wechsel nachholen, sobald es da ist
+                if (Art.Source != lastSource) { waitArt = false; SlideCover(playing); }
+                else if ((DateTime.Now - waitSince).TotalSeconds > 3) waitArt = false;
+            }
+            else lastSource = Art.Source;   // für den nächsten Wechsel: dieses Cover gleitet dann hinaus
             if (shownPlaying != playing)
             {
                 bool first = shownPlaying == null;

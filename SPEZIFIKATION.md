@@ -199,6 +199,7 @@ flowchart LR
   - `weather` – Wetter: jetzt und die Wochentage; Tag antippen = Stunden dieses Tages (siehe 8.2)
   - `calendar` – Kalender: nächste Termine, optional Wetter links
   - `todo` – Microsoft To Do
+  - `note` – Notiz: ein Zettel zum schnellen Aufschreiben, speichert beim Tippen (`notiz.txt` im Datenordner), Kopieren und Leeren im Kopf
   - `ai` – KI-Chat, Rechner, Text-Drop-Zone
   - `player` – Spotify- oder Medien-Player
   - `bluetooth` – Kopfhörer- oder Bluetooth-Seite (AirPods-Seite nur mit eingeschalteten AirPods-Funktionen)
@@ -245,13 +246,22 @@ flowchart LR
   - Akzentfarbe aus dem Cover
   - **Musikdienste erkannt** (`Provider`, mit Markenfarbe `ProviderColor`): YouTube Music, YouTube, SoundCloud, Apple Music, Deezer, TIDAL, Amazon Music, Qobuz, Bandcamp, Mixcloud, Audiomack, Pandora, Napster, TuneIn, Plexamp, VLC, foobar2000, MusicBee, AIMP, Winamp
   - Erkennung: Desktop-App am App-Namen; Browser-Tab am Fenstertitel, in dem der Songtitel steht („YouTube Music“ vor „YouTube“)
+  - **Webseiten im Browser** (`MediaService.Site`, `SiteLogo`): Adresse per UI Automation aus der Adressleiste des Fensters mit dem Medientitel
+    - Name der Seite statt Browsername („In Twitch öffnen“); bekannte Dienste in ihrer Schreibweise
+    - Ohne echtes Cover (Bild mit durchsichtigen Stellen = Browser-Logo) zeigt der Player das Logo der Seite: Icons aus dem HTML (größtes zuerst), sonst `apple-touch-icon.png`, sonst `favicon.ico`, sonst die Hauptdomain; mittig auf dunkler Fläche in der Logofarbe
+    - Logos werden direkt von der Seite geladen (kein fremder Dienst) und pro Domain im Arbeitsspeicher gehalten
   - Anzeige: Quellenname im Player („In Deezer öffnen“), Player-Wechsler mit schönen App-Namen (auch Opera, Brave)
 - **SpotifyService:** Spotify Web API (OAuth, Redirect `http://127.0.0.1:8898/callback`)
   - Gefällt mir, Geräte, Playlists, Lautstärke (Steuern nur mit Premium)
 - **Player-Wechsler:** alle Quellen mit Status und Titel; Auswahl angeheftet bis „Automatisch“
 - **Player-Design (`PlayerUi`):**
   - Cover 124 px mit Farbleuchten links; Titel, Künstler, Gerät, Spulleiste, Steuerung rechts
-  - Cover schrumpft bei Pause (0,88), Songwechsel mit Überblenden + Titel-Einschub, Play-Knopf federt
+  - Cover schrumpft bei Pause (0,88), Play-Knopf federt
+  - Songwechsel: altes Cover gleitet hinaus, neues aus der anderen Seite herein (Richtung nach Weiter/Zurück), Titel gleitet mit Unschärfe herein, Leuchten blitzt kurz auf
+  - Kommt der Titel vor dem Cover (Windows-Medien), wird der Cover-Wechsel nachgeholt, sobald es da ist (max. 3 s)
+  - Farbe des Leuchtens gleitet zum neuen Cover über; Leuchten atmet langsam
+  - Weiter/Zurück-Knopf stupst in seine Richtung; kleine Island: Cover federt auf, Titel rollt von unten herein
+  - Bei „Animationen aus“ in Windows ohne Bewegung
 - „Zurück zum Player“ öffnet den Player immer (auch pausiert, 2 Minuten erreichbar)
 
 ### 8.2 Wetter
@@ -330,7 +340,8 @@ flowchart LR
 - **App-Logo** aus Windows (`AppIcons`, einmal pro App geladen); Discord ohne Logo: Discord-Zeichen; Teams in Teams-Lila
 - **Claude-App-Mitteilungen:** nicht als Chat; bei frischem Hook-Signal (≤ 45 s) gar nicht, sonst als Claude-Meldung
 - **Antworten:**
-  - Knopf nur bei Chat-Apps: WhatsApp, Discord, Teams, Telegram, Signal, Messenger, Slack, Instagram, Skype, Threema, Element, Smartphone-Link
+  - Standard: Knopf nur bei Chat-Apps (WhatsApp, Discord, Teams, Telegram, Signal, Messenger, Slack, Instagram, Skype, Threema, Element); Smartphone-Link und andere Apps ohne Knopf
+  - pro App einstellbar (`ReplyApps`, Einstellungen → Hinweise → „Antworten-Knopf pro App“; gespeichert werden nur Abweichungen vom Standard)
   - Eingabefeld in der Island → App aktivieren, Chat öffnen (WhatsApp: Suche; Discord-DM: Direktlink; Server-Kanal: Schnellsuche), Text einfügen
   - WhatsApp und Discord-DMs: optional direkt absenden (`ReplyAutoSend`)
 - **Anrufe** (WhatsApp, Teams, Discord ohne RPC, Skype, Telegram, Signal):
@@ -379,6 +390,7 @@ flowchart LR
   - AirPods verbunden (Audiogerät erscheint, nicht in den ersten 15 s nach dem Start) → Animation „Gerät verbunden“
 - **Bluetooth/USB/Controller:** Meldung mit Akku-Ring, pro Gerät max. alle 3 h und nur nach ≥ 20 min Abwesenheit
   - Animation „Gerät verbunden“ in der Gerätefarbe (`DeviceColors`), Symbol in der Gerätefarbe
+  - **Licht nach Akkustand** (`BatteryGlow`, Standard aus): rot unter `BatteryLow` (10–40 %, Standard 20), grün ab `BatteryHigh` (50–90 %, Standard 80), dazwischen gelb; färbt Licht und Akku-Ring, geht vor der Gerätefarbe; nur bei bekanntem Akku (nicht USB-Speicher)
   - USB-Stick = Gerät (Name = Laufwerksname), Abziehen nur kurz „Entfernt“
   - Migration: „Gerät verbunden“ nur mit „App“ → „App + Licht“ (Geräte haben keine große App-Ansicht, daher sonst kein Licht)
 - **Logitech** (`Logitech.cs`, `LogitechEnabled`):
@@ -401,6 +413,7 @@ flowchart LR
 - **Timer-Auswahl:** drei Drehräder (Std · Min · Sek), Schnellwahl (1–30 min, Pomodoro), letzte Dauer gemerkt
 - **Laufender Timer:** Ring leert sich (Pille, Kreis, groß), „Endet um …“, +1/+5/Pause/Beenden
 - Pomodoro (25/5/15), Stoppuhr mit Runden, Sprachmemos
+- Notiz: Seite `note` und Kachel „Notiz“, antippen und lostippen, Esc beendet
 - Zwischenablage-Verlauf: 25 Einträge, nur im Arbeitsspeicher, Passwörter verdeckt
 - App-Wechsler, Helligkeit (DDC/CI + intern), Kurzbefehle
 - Texterkennung (OCR) per Mittelklick oder Hotkey
@@ -496,7 +509,11 @@ flowchart LR
   - `?dir=1|-1` – wischen (mit Animation)
 - **`/settings`** (GET) – Einstellungen öffnen, `?page=…&q=…` (Seite, Suche)
 - **`/test`** (GET) – `?event=message|claude|timer|download|copy|device`: Ereignis-Animation vorführen (für Aufnahmen)
-  - `?event=msg&app=…&title=…&body=…`: echte Nachricht durchspielen (Verlauf, App-Farbe)
+  - `?event=msg&app=…&title=…&body=…`: echte Nachricht durchspielen (Verlauf, App-Farbe, Antworten-Knopf)
+  - `?event=battery&pct=…`: Kopfhörer mit diesem Akkustand verbinden (Licht nach Akkustand)
+  - `?event=site&title=…`: Webseite zum Fenstertitel suchen, Logo als `site-logo.png` im Datenordner speichern
+  - `?event=song&dir=1|-1`: Songwechsel-Animation im offenen Player vorführen
+- **`/player`** (GET) – `?app=…`: Player wechseln (Teil von App-Name, App-ID oder Titel)
 
 ### 9.2 Externe Dienste (nur wenn eingerichtet)
 
@@ -522,7 +539,8 @@ flowchart LR
   - Uhr: `ClockDate`, `ClockBattery`, `ClockSeconds`, `ClockStyle`, `ClockSize`
   - Ausblenden: `AutoHide`, `HideWithActivities`, `HideDelay`, `HideInFullscreen`
   - Animationen: `AnimModes`, `AnimColors`, `GlowStyle`, `GlowStyles`, `OrbitLook`, `OrbitEnd`, `AppColors`, `DeviceColors`, `SeenApps`, `SeenDevices`
-  - Hinweise: `AlertSize`, `AlertMotion`, `AlertPriority`, `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads`, `MessageHistory`
+  - Hinweise: `AlertSize`, `AlertMotion`, `AlertPriority`, `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads`, `MessageHistory`, `ReplyApps`
+  - Geräte-Licht: `BatteryGlow`, `BatteryLow`, `BatteryHigh`
   - Kopfhörer/AirPods: `AirPodsEnabled`, `AirPodsAap`, `AirPodsAutoPause`, `AirPodsAutoResume`, `AirPodsAutoSwitch`, `AirPodsNameFilter`
   - Wetter: `WeatherEnabled` (kleine Ansicht), `WeatherCity`, `WeatherUseLocation`
   - Kalender: `CalendarUrls`, `CalendarEnabled`, `CalendarRemind`, `CalendarAtStart`, `CalendarSpeak`, `CalendarWithWeather`

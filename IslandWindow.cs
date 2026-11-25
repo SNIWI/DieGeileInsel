@@ -1434,7 +1434,7 @@ namespace DynamicIsland
         /// <summary>Panels (Kurzbefehle, Downloads, Ton, Hilfe) verschwinden, sobald man sie verlässt.</summary>
         static bool IsPanel(Activity a) => a is ShortcutsActivity || a is DownloadsActivity || a is SoundActivity
                                             || a is ClipboardActivity || a is AppSwitcherActivity || a is BrightnessActivity
-                                            || a is SpotifyListActivity || a is AirPodsActivity || a is BluetoothActivity || a is HeadphonesActivity || a is AiActivity || a is CalendarActivity || a is WeatherActivity || a is TodoActivity || a is WidgetPageActivity || a is TimerPickerActivity || a?.Id == "help";
+                                            || a is SpotifyListActivity || a is AirPodsActivity || a is BluetoothActivity || a is HeadphonesActivity || a is AiActivity || a is CalendarActivity || a is WeatherActivity || a is TodoActivity || a is NoteActivity || a is WidgetPageActivity || a is TimerPickerActivity || a?.Id == "help";
 
         void Expand(Activity a)
         {
@@ -2095,7 +2095,7 @@ namespace DynamicIsland
         // =================================================================
         //  Seiten der großen Island: seitlich wischen statt Buttons
         // =================================================================
-        static readonly string[] PanelKeys = { "shortcuts", "apps", "clipboard", "sound", "brightness", "downloads", "ai", "calendar", "todo", "weather" };
+        static readonly string[] PanelKeys = { "shortcuts", "apps", "clipboard", "sound", "brightness", "downloads", "ai", "calendar", "todo", "note", "weather" };
         int slideDir;
         Point swipeStart;
         bool swipeTracking, pageDrag;
@@ -2313,6 +2313,29 @@ namespace DynamicIsland
             OpenMenu(cm);
         }
 
+        async void TestSiteLogo(string title)
+        {
+            try
+            {
+                var domain = await System.Threading.Tasks.Task.Run(() => SiteLogo.FindDomain(title));
+                var logo = await SiteLogo.GetAsync(domain);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(Program.DataDir, "site-logo.txt"), (domain ?? "-") + " " + SiteLogo.NameOf(domain));
+                if (logo == null) return;
+                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(logo));
+                using var fs = System.IO.File.Create(System.IO.Path.Combine(Program.DataDir, "site-logo.png"));
+                enc.Save(fs);
+            }
+            catch (Exception ex) { Program.Log(ex); }
+        }
+
+        async void PickPlayerByName(string name)
+        {
+            var sources = await Media.SourcesAsync();
+            var s = sources.FirstOrDefault(x => (x.Name + " " + x.AppId + " " + x.Title).IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0);
+            if (s != null) PickPlayer(s);
+        }
+
         void PickPlayer(MediaService.Source s)
         {
             bool isSp = s.Name == "Spotify";
@@ -2462,6 +2485,17 @@ namespace DynamicIsland
             if (activities.Contains(a)) Rebuild(a);
             else Add(a);
             Expand(a);
+        }
+
+        // ---- Notiz ----
+        public void ShowNote(bool focus = false)
+        {
+            var a = activities.OfType<NoteActivity>().FirstOrDefault() ?? new NoteActivity(this) { Host = this };
+            a.ExpiresAt = DateTime.Now.AddSeconds(60);
+            if (activities.Contains(a)) { if (!a.Typing) Rebuild(a); }
+            else Add(a);
+            Expand(a);
+            if (focus) Dispatcher.BeginInvoke(new Action(a.FocusInput), DispatcherPriority.Loaded);
         }
 
         // ---- Microsoft To Do ----
@@ -2844,6 +2878,7 @@ namespace DynamicIsland
             if (a is AiActivity) return "ai";
             if (a is CalendarActivity) return "calendar";
             if (a is TodoActivity) return "todo";
+            if (a is NoteActivity) return "note";
             if (a is WeatherActivity) return "weather";
             return "live:" + a.Id;
         }
@@ -2882,6 +2917,7 @@ namespace DynamicIsland
                 case "ai": ShowAi(); break;
                 case "calendar": ShowCalendar(); break;
                 case "todo": ShowTodo(); break;
+                case "note": ShowNote(); break;
                 case "weather": ShowWeather(); break;
                 case "airpods":
                 case "bluetooth": ShowBluetooth(); break;
@@ -2981,6 +3017,7 @@ namespace DynamicIsland
                 case "ai": return Ui.Purple;
                 case "calendar": return Ui.Red;
                 case "todo": return Ui.Blue;
+                case "note": return Ui.Yellow;
                 case "weather": return Ui.Teal;
             }
             if (key.StartsWith("w:")) return Ui.Teal;
@@ -3117,6 +3154,10 @@ namespace DynamicIsland
                     break;
             }
         }
+
+        /// <summary>Vorschau „Licht nach Akkustand“: Kopfhörer verbinden sich mit diesem Akkustand.</summary>
+        public void PreviewBatteryGlow(int pct) =>
+            ShowDeviceAlert("bt-preview", "", "Kopfhörer", $"Verbunden · Akku {pct} %", pct / 100.0, BatteryColor(pct));
 
         /// <summary>Vorschau eines Ereignisses aus den Einstellungen (Animations-Tester).</summary>
         public void TestEvent(string key, Color c)
@@ -3442,6 +3483,7 @@ namespace DynamicIsland
                 case "ai": return "\uE8BD";
                 case "calendar": return CalendarActivity.Glyph;
                 case "todo": return TodoActivity.Glyph;
+                case "note": return NoteActivity.Glyph;
                 case "weather": return WeatherActivity.Glyph;
             }
             if (key.StartsWith("w:")) return "\uF0E2"; // Widget-Seite
@@ -3465,6 +3507,7 @@ namespace DynamicIsland
                 case "ai": return Gemini.Name;
                 case "calendar": return "Kalender";
                 case "todo": return "To Do";
+                case "note": return "Notiz";
                 case "weather": return "Wetter";
             }
             if (key.StartsWith("w:")) return Settings.WidgetPages.FirstOrDefault(p => "w:" + p.Id == key)?.Name ?? "Widgets";
@@ -3759,11 +3802,25 @@ namespace DynamicIsland
         }
 
         /// <summary>Chat-Apps, in denen man auf eine Nachricht antworten kann.</summary>
-        static readonly string[] ChatApps = { "whatsapp", "discord", "teams", "telegram", "signal", "messenger", "slack", "instagram", "skype", "threema", "element", "smartphone-link", "phone link", "yourphone", "phoneexperience", "vorschau" };
-        static bool CanReply(string app, string aumid)
+        static readonly string[] ChatApps = { "whatsapp", "discord", "teams", "telegram", "signal", "messenger", "slack", "instagram", "skype", "threema", "element", "vorschau" };
+        // Smartphone-Link: Mitteilungen vom Handy – Antworten klappt dort nicht zuverlässig, darum standardmäßig ohne Knopf
+        static readonly string[] PhoneLinkIds = { "smartphone-link", "smartphone link", "phone link", "yourphone", "phoneexperience" };
+
+        /// <summary>Standard ohne eigene Einstellung: Chat-Apps mit Antworten-Knopf, Smartphone-Link und alles andere ohne.</summary>
+        public static bool DefaultReply(string app, string aumid = null)
         {
             string s = ((app ?? "") + " " + (aumid ?? "")).ToLowerInvariant();
+            if (PhoneLinkIds.Any(c => s.Contains(c))) return false;
             return ChatApps.Any(c => s.Contains(c));
+        }
+
+        /// <summary>Antworten-Knopf zeigen? Eigene Wahl pro App (Einstellungen → Hinweise) geht vor dem Standard.</summary>
+        bool CanReply(string app, string aumid)
+        {
+            if (!string.IsNullOrWhiteSpace(app) && Settings.ReplyApps != null)
+                foreach (var kv in Settings.ReplyApps)
+                    if (string.Equals(kv.Key, app.Trim(), StringComparison.OrdinalIgnoreCase)) return kv.Value;
+            return DefaultReply(app, aumid);
         }
 
         async void AnswerCall(GenericActivity g, string app, string aumid, bool accept, bool isDiscord, bool isWhatsApp)
@@ -5164,7 +5221,7 @@ namespace DynamicIsland
                     }
                     catch { }
                     var path = d;
-                    ShowDeviceAlert("usb-in", hdd ? "\uEDA2" : "\uE88E", label, info, used, Ui.Accent, () => { Open(path); return true; });
+                    ShowDeviceAlert("usb-in", hdd ? "\uEDA2" : "\uE88E", label, info, used, Ui.Accent, () => { Open(path); return true; }, battery: false);   // Ring = belegter Speicher, kein Akku
                 }
                 foreach (var d in lastDrives.Except(now))
                 {
@@ -5199,7 +5256,15 @@ namespace DynamicIsland
         /// Gerät verbunden: Banner mit Symbol und einem Ring, der sich füllt und bis zum
         /// exakten Akkustand (bzw. belegten Speicher) hochzählt.
         /// </summary>
-        void ShowDeviceAlert(string id, string glyph, string title, string subtitle, double? fraction, Color ring, Func<bool> tap = null)
+        /// <summary>Farbe nach Akkustand mit den eingestellten Bereichen: unter „rot bis“ rot, ab „grün ab“ grün, dazwischen gelb.</summary>
+        public Color BatteryBand(int pct)
+        {
+            int low = Math.Max(5, Math.Min(60, Settings.BatteryLow));
+            int high = Math.Max(low + 5, Math.Min(100, Settings.BatteryHigh));
+            return pct < low ? Ui.Red : pct < high ? Ui.Yellow : Ui.Green;
+        }
+
+        void ShowDeviceAlert(string id, string glyph, string title, string subtitle, double? fraction, Color ring, Func<bool> tap = null, bool battery = true)
         {
             // eigene Farbe für dieses Gerät (Einstellungen → Animationen → Farbe pro Gerät): Licht und Symbol
             Color? devColor = null;
@@ -5209,7 +5274,15 @@ namespace DynamicIsland
                 RememberName(Settings.SeenDevices, title);
                 devColor = NamedColor(Settings.DeviceColors, title);
             }
-            Celebrate(ring, "device", exact: devColor);
+            // Licht nach Akkustand (wenn eingeschaltet und der Akku bekannt ist) – geht vor der Gerätefarbe
+            Color? glowColor = devColor;
+            if (Settings.BatteryGlow && battery && fraction.HasValue)
+            {
+                var band = BatteryBand((int)Math.Round(fraction.Value * 100));
+                glowColor = band;
+                ring = band;
+            }
+            Celebrate(ring, "device", exact: glowColor);
             var a = Alert(id, 5, g =>
             {
                 g.Banner = true;
@@ -5463,7 +5536,10 @@ namespace DynamicIsland
         {
             if (path.StartsWith("/claude-limits")) { Claude.HandleLimits(body); return; }   // Statuszeile: Nutzungs-Limits
             if (path.StartsWith("/logitech")) { ShowLogitech(); return; }                       // Akku von Maus & Tastatur zeigen
+            if (path.StartsWith("/test") && q["event"] == "battery") { PreviewBatteryGlow(int.TryParse(q["pct"], out var bp) ? Math.Max(0, Math.Min(100, bp)) : 50); return; }   // Licht nach Akkustand vorführen
             if (path.StartsWith("/test") && q["event"] == "msg") { ShowMessage(q["app"] ?? "WhatsApp", q["title"] ?? "Luca", q["body"] ?? "Kommst du heute noch?", null, null); return; }   // echte Nachricht vorführen (Verlauf, App-Farbe)
+            if (path.StartsWith("/test") && q["event"] == "song") { PlayerUi.TestChange = q["dir"] == "-1" ? -1 : 1; return; }   // Songwechsel-Animation im Player vorführen
+            if (path.StartsWith("/test") && q["event"] == "site") { TestSiteLogo(q["title"] ?? ""); return; }   // Webseiten-Logo für einen Fenstertitel prüfen (speichert site-logo.png)
             if (path.StartsWith("/test")) { var tk = q["event"] ?? "message"; TestEvent(tk, EventColor(tk, Ui.Blue)); return; }   // Ereignis-Animation vorführen (?event=claude|timer|download|copy|message|device)
             if (path.StartsWith("/demo"))                                                       // Demo-Modus für Aufnahmen: Medien (Titel, Cover) ausblenden
             {
@@ -5480,6 +5556,7 @@ namespace DynamicIsland
                 else OpenPage(q["key"] ?? "dashboard");
                 return;
             }
+            if (path.StartsWith("/player") && q["app"] != null) { PickPlayerByName(q["app"]); return; }   // Player wechseln (?app=chrome|spotify|…)
             if (path.StartsWith("/settings")) { OpenSetup(q["page"]); if (q["q"] != null) setupWin?.Search(q["q"]); return; }   // Einstellungen öffnen (?page=…&q=Suche)
             if (path.StartsWith("/claude")) { Claude.Handle(body, q); return; }
             string id = "api-" + (q["id"] ?? "1");
