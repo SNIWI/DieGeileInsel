@@ -394,10 +394,10 @@ flowchart LR
   - Auto-Pause/-Weiter, Auto-Umschalten, AAP über WPods (ANC/Transparenz)
   - Case-Popup nur bei wirklich verbundenen eigenen AirPods (bis 7,5 s gewartet), nicht bei großer Island
   - AirPods verbunden (Audiogerät erscheint, nicht in den ersten 15 s nach dem Start) → Animation „Gerät verbunden“
-- **Bluetooth/USB/Controller:** Meldung mit Akku-Ring, pro Gerät max. alle 3 h und nur nach ≥ 20 min Abwesenheit
+- **Bluetooth/Controller:** Meldung mit Akku-Ring (ohne bekannten Akku: Haken), pro Gerät max. alle 3 h und nur nach ≥ 20 min Abwesenheit
   - Animation „Gerät verbunden“ in der Gerätefarbe (`DeviceColors`), Symbol in der Gerätefarbe
   - **Licht nach Akkustand** (`BatteryGlow`, Standard aus): rot unter `BatteryLow` (10–40 %, Standard 20), grün ab `BatteryHigh` (50–90 %, Standard 80), dazwischen gelb; färbt Licht und Akku-Ring, geht vor der Gerätefarbe; nur bei bekanntem Akku (nicht USB-Speicher)
-  - USB-Stick = Gerät (Name = Laufwerksname), Abziehen nur kurz „Entfernt“
+  - **USB-Stick / externe Festplatte** = Gerät (Name = Laufwerksname): statt Akku-Ring freier Speicher („12,4 GB frei“) mit Balken für den belegten Anteil (blau, ab 80 % orange, ab 90 % rot); Untertitel „E: · 16,5 GB von 28,9 GB belegt“; Antippen öffnet das Laufwerk; Abziehen nur kurz „Entfernt“
   - Migration: „Gerät verbunden“ nur mit „App“ → „App + Licht“ (Geräte haben keine große App-Ansicht, daher sonst kein Licht)
 - **Logitech** (`Logitech.cs`, `LogitechEnabled`):
   - HID++ 2.0 direkt über Windows, ohne G HUB/Options+
