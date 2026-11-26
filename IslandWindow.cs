@@ -1434,7 +1434,7 @@ namespace DynamicIsland
         /// <summary>Panels (Kurzbefehle, Downloads, Ton, Hilfe) verschwinden, sobald man sie verlässt.</summary>
         static bool IsPanel(Activity a) => a is ShortcutsActivity || a is DownloadsActivity || a is SoundActivity
                                             || a is ClipboardActivity || a is AppSwitcherActivity || a is BrightnessActivity
-                                            || a is SpotifyListActivity || a is AirPodsActivity || a is BluetoothActivity || a is HeadphonesActivity || a is AiActivity || a is CalendarActivity || a is WeatherActivity || a is TodoActivity || a is NoteActivity || a is WidgetPageActivity || a is TimerPickerActivity || a?.Id == "help";
+                                            || a is SpotifyListActivity || a is AirPodsActivity || a is BluetoothActivity || a is HeadphonesActivity || a is AiActivity || a is CalendarActivity || a is WeatherActivity || a is TodoActivity || a is NoteActivity || a is WorldClockActivity || a is WidgetPageActivity || a is TimerPickerActivity || a?.Id == "help";
 
         void Expand(Activity a)
         {
@@ -2095,7 +2095,7 @@ namespace DynamicIsland
         // =================================================================
         //  Seiten der großen Island: seitlich wischen statt Buttons
         // =================================================================
-        static readonly string[] PanelKeys = { "shortcuts", "apps", "clipboard", "sound", "brightness", "downloads", "ai", "calendar", "todo", "note", "weather" };
+        static readonly string[] PanelKeys = { "shortcuts", "apps", "clipboard", "sound", "brightness", "downloads", "ai", "calendar", "todo", "note", "weather", "worldclock" };
         int slideDir;
         Point swipeStart;
         bool swipeTracking, pageDrag;
@@ -2498,6 +2498,16 @@ namespace DynamicIsland
             if (focus) Dispatcher.BeginInvoke(new Action(a.FocusInput), DispatcherPriority.Loaded);
         }
 
+        // ---- Weltuhr ----
+        public void ShowWorldClock()
+        {
+            var a = activities.OfType<WorldClockActivity>().FirstOrDefault() ?? new WorldClockActivity(this) { Host = this };
+            a.ExpiresAt = DateTime.Now.AddSeconds(60);
+            if (activities.Contains(a)) Rebuild(a);
+            else Add(a);
+            Expand(a);
+        }
+
         // ---- Microsoft To Do ----
         public void ShowTodo(bool focus = false)
         {
@@ -2800,6 +2810,22 @@ namespace DynamicIsland
         {
             [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
             [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+            [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+            [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+            [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
+            [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+            [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+
+            /// <summary>Fenster sicher nach vorn holen, auch wenn gerade eine andere App vorne ist (Eingabe kurz koppeln).</summary>
+            public static void ForceForeground(IntPtr h)
+            {
+                if (h == IntPtr.Zero) return;
+                if (IsIconic(h)) ShowWindow(h, 9);
+                uint fg = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero), me = GetCurrentThreadId();
+                bool att = fg != 0 && fg != me && AttachThreadInput(me, fg, true);
+                try { SetForegroundWindow(h); }
+                finally { if (att) AttachThreadInput(me, fg, false); }
+            }
             [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
             [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v);
 
@@ -2879,6 +2905,7 @@ namespace DynamicIsland
             if (a is CalendarActivity) return "calendar";
             if (a is TodoActivity) return "todo";
             if (a is NoteActivity) return "note";
+            if (a is WorldClockActivity) return "worldclock";
             if (a is WeatherActivity) return "weather";
             return "live:" + a.Id;
         }
@@ -2918,6 +2945,7 @@ namespace DynamicIsland
                 case "calendar": ShowCalendar(); break;
                 case "todo": ShowTodo(); break;
                 case "note": ShowNote(); break;
+                case "worldclock": ShowWorldClock(); break;
                 case "weather": ShowWeather(); break;
                 case "airpods":
                 case "bluetooth": ShowBluetooth(); break;
@@ -3018,6 +3046,7 @@ namespace DynamicIsland
                 case "calendar": return Ui.Red;
                 case "todo": return Ui.Blue;
                 case "note": return Ui.Yellow;
+                case "worldclock": return Ui.Orange;
                 case "weather": return Ui.Teal;
             }
             if (key.StartsWith("w:")) return Ui.Teal;
@@ -3484,6 +3513,7 @@ namespace DynamicIsland
                 case "calendar": return CalendarActivity.Glyph;
                 case "todo": return TodoActivity.Glyph;
                 case "note": return NoteActivity.Glyph;
+                case "worldclock": return WorldClockActivity.Glyph;
                 case "weather": return WeatherActivity.Glyph;
             }
             if (key.StartsWith("w:")) return "\uF0E2"; // Widget-Seite
@@ -3508,6 +3538,7 @@ namespace DynamicIsland
                 case "calendar": return "Kalender";
                 case "todo": return "To Do";
                 case "note": return "Notiz";
+                case "worldclock": return "Weltuhr";
                 case "weather": return "Wetter";
             }
             if (key.StartsWith("w:")) return Settings.WidgetPages.FirstOrDefault(p => "w:" + p.Id == key)?.Name ?? "Widgets";
@@ -3871,7 +3902,7 @@ namespace DynamicIsland
         public static string ReplyHint(ReplyActivity r, bool autoSend)
         {
             bool direct = IsWhatsAppApp(r.App) || IsDiscordDm(r);
-            if (direct) return autoSend ? "Enter: öffnet den Chat in " + r.App + " und sendet sofort." : "Enter: öffnet den Chat und fügt die Antwort ein – du sendest selbst.";
+            if (direct) return autoSend ? "Enter: sendet sofort – unsichtbar, wenn der Chat in " + r.App + " offen ist, sonst kurz über die App." : "Enter: öffnet den Chat und fügt die Antwort ein – du sendest selbst.";
             if (IsDiscordApp(r.App)) return "Enter: springt in den Kanal und fügt die Antwort ein – du sendest selbst.";
             return "Enter: öffnet " + (string.IsNullOrEmpty(r.App) ? "die App" : r.App) + " und fügt die Antwort ein.";
         }
@@ -3880,11 +3911,32 @@ namespace DynamicIsland
         /// Antwort zustellen: App nach vorn, richtigen Chat öffnen (WhatsApp: Suche, Discord: Direktlink bzw. Schnellsuche),
         /// Text einfügen und – bei WhatsApp / Discord-DMs, wenn erlaubt – absenden.
         /// </summary>
+        string lastBgProbe = "";
+
         public async void SendReply(ReplyActivity r, string text)
         {
             r.Finished = true;
+            IntPtr prevWin = typingPrev;               // Fenster, in dem du vor dem Antworten warst
             EndTyping(false);
             Collapse();
+
+            // 1. Versuch: unsichtbar senden (Chat ist in der App schon offen) – dein Fenster bleibt vorne
+            if (Settings.ReplyAutoSend && Settings.ReplyBackground)
+            {
+                string app = r.App, aumid = r.Aumid, who = r.Sender;
+                BackgroundReply.Probe probe = null;
+                bool bg = await Task.Run(() => BackgroundReply.TrySend(app, aumid, who, text, out probe));
+                if (bg)
+                {
+                    if (prevWin != IntPtr.Zero && prevWin != hwnd) AiNative.ForceForeground(prevWin);
+                    ReplyDone(r, text, true, true);
+                    return;
+                }
+                lastBgProbe = app + ": " + probe;   // warum nicht (für /test?event=replyprobe)
+            }
+
+            var appWinBefore = AppActivator.FindWindow(r.App, r.Aumid);
+            bool appWasHidden = appWinBefore == IntPtr.Zero || BackgroundReply.Minimized(appWinBefore);
             string oldClip = null;
             try { if (Clipboard.ContainsText()) oldClip = Clipboard.GetText(); } catch { }
             bool sent = false, pasted = false;
@@ -3945,6 +3997,19 @@ namespace DynamicIsland
             {
                 if (oldClip != null) ClipSet(oldClip);
             }
+            // gesendet → zurück, wo du warst; App wieder minimieren, wenn sie vorher weg war
+            if (sent && Settings.ReplyReturn && prevWin != IntPtr.Zero && prevWin != hwnd)
+            {
+                await Task.Delay(350);
+                var appWin = AppActivator.FindWindow(r.App, r.Aumid);
+                if (appWasHidden && appWin != IntPtr.Zero && appWin != prevWin) AiNative.ShowWindow(appWin, 6);   // SW_MINIMIZE
+                AiNative.ForceForeground(prevWin);
+            }
+            ReplyDone(r, text, sent, pasted);
+        }
+
+        void ReplyDone(ReplyActivity r, string text, bool sent, bool pasted)
+        {
             Alert("reply", 3.5, g =>
             {
                 g.Banner = true;
@@ -5539,6 +5604,22 @@ namespace DynamicIsland
             if (path.StartsWith("/test") && q["event"] == "battery") { PreviewBatteryGlow(int.TryParse(q["pct"], out var bp) ? Math.Max(0, Math.Min(100, bp)) : 50); return; }   // Licht nach Akkustand vorführen
             if (path.StartsWith("/test") && q["event"] == "msg") { ShowMessage(q["app"] ?? "WhatsApp", q["title"] ?? "Luca", q["body"] ?? "Kommst du heute noch?", null, null); return; }   // echte Nachricht vorführen (Verlauf, App-Farbe)
             if (path.StartsWith("/test") && q["event"] == "song") { PlayerUi.TestChange = q["dir"] == "-1" ? -1 : 1; return; }   // Songwechsel-Animation im Player vorführen
+            if (path.StartsWith("/test") && q["event"] == "fg")                               // Zurückspringen prüfen: Fenster mit diesem Titel nach vorn holen
+            {
+                var fh = AppActivator.FindWindow(q["title"] ?? "", null);
+                if (fh != IntPtr.Zero) AiNative.ForceForeground(fh);
+                return;
+            }
+            if (path.StartsWith("/test") && q["event"] == "replyprobe")                       // prüfen, ob unsichtbares Antworten ginge (sendet nichts) → replyprobe.txt
+            {
+                string pa = q["app"] ?? "WhatsApp", ps = q["sender"] ?? "";
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    var pr = BackgroundReply.Check(pa, null, ps);
+                    try { System.IO.File.WriteAllText(System.IO.Path.Combine(Program.DataDir, "replyprobe.txt"), pa + " / " + ps + ": " + pr + "\nletzter Versuch: " + lastBgProbe); } catch { }
+                });
+                return;
+            }
             if (path.StartsWith("/test") && q["event"] == "site") { TestSiteLogo(q["title"] ?? ""); return; }   // Webseiten-Logo für einen Fenstertitel prüfen (speichert site-logo.png)
             if (path.StartsWith("/test")) { var tk = q["event"] ?? "message"; TestEvent(tk, EventColor(tk, Ui.Blue)); return; }   // Ereignis-Animation vorführen (?event=claude|timer|download|copy|message|device)
             if (path.StartsWith("/demo"))                                                       // Demo-Modus für Aufnahmen: Medien (Titel, Cover) ausblenden

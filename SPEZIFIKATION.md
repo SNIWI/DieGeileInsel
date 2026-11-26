@@ -200,6 +200,7 @@ flowchart LR
   - `calendar` – Kalender: nächste Termine, optional Wetter links
   - `todo` – Microsoft To Do
   - `note` – Notiz: ein Zettel zum schnellen Aufschreiben, speichert beim Tippen (`notiz.txt` im Datenordner), Kopieren und Leeren im Kopf
+  - `worldclock` – Weltuhr: bis zu 6 Städte mit Uhrzeit, Zeitunterschied und kleinem Ziffernblatt (hell am Tag, dunkel in der Nacht); öffnet sich auch beim Antippen der Uhr in der Übersicht
   - `ai` – KI-Chat, Rechner, Text-Drop-Zone
   - `player` – Spotify- oder Medien-Player
   - `bluetooth` – Kopfhörer- oder Bluetooth-Seite (AirPods-Seite nur mit eingeschalteten AirPods-Funktionen)
@@ -344,6 +345,11 @@ flowchart LR
   - pro App einstellbar (`ReplyApps`, Einstellungen → Hinweise → „Antworten-Knopf pro App“; gespeichert werden nur Abweichungen vom Standard)
   - Eingabefeld in der Island → App aktivieren, Chat öffnen (WhatsApp: Suche; Discord-DM: Direktlink; Server-Kanal: Schnellsuche), Text einfügen
   - WhatsApp und Discord-DMs: optional direkt absenden (`ReplyAutoSend`)
+  - **Unsichtbar senden** (`BackgroundReply`, `ReplyBackground`, Standard an): zuerst per UI Automation versuchen, ohne das Fenster nach vorn zu holen
+    - nur wenn: App-Fenster offen (nicht minimiert), Chat mit dem Absender offen (Name über dem Eingabefeld, nicht in der Chat-Liste), Eingabefeld leer, Senden-Knopf vorhanden
+    - gesendet gilt nur, wenn das Eingabefeld danach leer ist; sonst Text wieder entfernen und normaler Weg
+    - geht nicht bei Apps, die ihren Inhalt nicht an die Bedienhilfen geben: WhatsApp (WebView2) und Discord (Electron) zeigen nur die Fensterknöpfe; Discord hat zudem keinen Senden-Knopf
+  - **Zurück zum vorherigen Fenster** (`ReplyReturn`, Standard an): nach dem Senden springt die Island in das Fenster zurück, in dem du vorher warst (`ForceForeground` mit kurz gekoppelter Eingabe); war die App vorher minimiert oder nicht offen, wird sie wieder minimiert. Nur eingefügt (nicht gesendet): App bleibt vorne zum Prüfen
 - **Anrufe** (WhatsApp, Teams, Discord ohne RPC, Skype, Telegram, Signal):
   - grüner/roter Knopf im Anruf-Banner
   - `CallUi` sucht per UI Automation „Annehmen“/„Ablehnen“ in der Windows-Mitteilung, dann in den App-Fenstern (Audio vor Video)
@@ -513,6 +519,8 @@ flowchart LR
   - `?event=battery&pct=…`: Kopfhörer mit diesem Akkustand verbinden (Licht nach Akkustand)
   - `?event=site&title=…`: Webseite zum Fenstertitel suchen, Logo als `site-logo.png` im Datenordner speichern
   - `?event=song&dir=1|-1`: Songwechsel-Animation im offenen Player vorführen
+  - `?event=replyprobe&app=…&sender=…`: prüfen, ob unsichtbares Antworten ginge (sendet nichts), Ergebnis in `replyprobe.txt`
+  - `?event=fg&title=…`: Fenster nach vorn holen (Zurückspringen testen)
 - **`/player`** (GET) – `?app=…`: Player wechseln (Teil von App-Name, App-ID oder Titel)
 
 ### 9.2 Externe Dienste (nur wenn eingerichtet)
@@ -521,7 +529,7 @@ flowchart LR
 - Microsoft Teams Drittanbieter-API (lokal, `127.0.0.1:8124`)
 - Microsoft Graph (To Do, Gerätecode-Anmeldung)
 - KI-Anbieter (Gemini, OpenAI, xAI, Anthropic, Mistral, DeepSeek, OpenRouter)
-- Open-Meteo (Wetter + Geocoding)
+- Open-Meteo (Wetter + Geocoding, Stadtsuche der Weltuhr)
 - iCal-Adressen des Nutzers
 
 ---
@@ -539,10 +547,11 @@ flowchart LR
   - Uhr: `ClockDate`, `ClockBattery`, `ClockSeconds`, `ClockStyle`, `ClockSize`
   - Ausblenden: `AutoHide`, `HideWithActivities`, `HideDelay`, `HideInFullscreen`
   - Animationen: `AnimModes`, `AnimColors`, `GlowStyle`, `GlowStyles`, `OrbitLook`, `OrbitEnd`, `AppColors`, `DeviceColors`, `SeenApps`, `SeenDevices`
-  - Hinweise: `AlertSize`, `AlertMotion`, `AlertPriority`, `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ShowDownloads`, `MessageHistory`, `ReplyApps`
+  - Hinweise: `AlertSize`, `AlertMotion`, `AlertPriority`, `ShowVolume`, `ShowClipboard`, `ShowCapsLock`, `ShowBluetooth`, `ShowPrivacy`, `MirrorNotifications`, `ReplyAutoSend`, `ReplyBackground`, `ReplyReturn`, `ShowDownloads`, `MessageHistory`, `ReplyApps`
   - Geräte-Licht: `BatteryGlow`, `BatteryLow`, `BatteryHigh`
   - Kopfhörer/AirPods: `AirPodsEnabled`, `AirPodsAap`, `AirPodsAutoPause`, `AirPodsAutoResume`, `AirPodsAutoSwitch`, `AirPodsNameFilter`
   - Wetter: `WeatherEnabled` (kleine Ansicht), `WeatherCity`, `WeatherUseLocation`
+  - Weltuhr: `WorldClocks` (Liste aus Name, Land, IANA-Zeitzone; Standard New York, London, Tokio)
   - Kalender: `CalendarUrls`, `CalendarEnabled`, `CalendarRemind`, `CalendarAtStart`, `CalendarSpeak`, `CalendarWithWeather`
   - Katzen: `CatsMode`, `CatsStayVisible`, `CatsCurl`, `CatsWalk`, `CatsMoodAuto`, `Cats`
   - KI: `AiEnabled`, `AiProvider`, `AiKeysProtected`, `AiModelFor`

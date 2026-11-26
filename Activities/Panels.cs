@@ -368,6 +368,7 @@ namespace DynamicIsland
             new DashTile { Key = "weather",    Label = "Wetter",        Glyph = WeatherActivity.Glyph, Tint = Ui.Teal, Run = h => h.ShowWeather() },
             new DashTile { Key = "todo",       Label = "To Do",       Glyph = "\uE73A", Tint = Ui.Blue,   Run = h => h.ShowTodo() },
             new DashTile { Key = "note",       Label = "Notiz",         Glyph = NoteActivity.Glyph, Tint = Ui.Yellow, Run = h => h.ShowNote(true) },
+            new DashTile { Key = "worldclock", Label = "Weltuhr",       Glyph = WorldClockActivity.Glyph, Tint = Ui.Orange, Run = h => h.ShowWorldClock() },
             new DashTile { Key = "calendar",  Label = "Kalender",      Glyph = "\uE787", Tint = Ui.Red,    Run = h => h.ShowCalendar() },
             new DashTile { Key = "ai",         Label = "KI-Chat",        Glyph = "\uE8BD", Tint = Ui.Purple, Run = h => h.ShowAi(true) },
             new DashTile { Key = "logitech", Label = "Maus & Tastatur", Glyph = "", Tint = Ui.Teal, Run = h => h.ShowLogitech() },

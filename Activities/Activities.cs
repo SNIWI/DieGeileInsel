@@ -765,6 +765,13 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             time.Margin = new Thickness(-2, -3, 0, 0);
             var left = Ui.VStack(0, date, time);
             left.VerticalAlignment = VerticalAlignment.Center;
+            left.HorizontalAlignment = HorizontalAlignment.Left;
+            // Uhr antippen → Weltuhr
+            left.Background = Brushes.Transparent;
+            left.Cursor = Cursors.Hand;
+            left.ToolTip = "Weltuhr";
+            left.MouseLeftButtonDown += (s, e) => e.Handled = true;
+            left.MouseLeftButtonUp += (s, e) => { e.Handled = true; host.ShowWorldClock(); };
             miniArt = null; miniTitle = miniArtist = miniPlay = null; miniShownArt = null;
             cpuB = null; ramB = null; cpuT = null; ramT = null; bat = null; batT = null;
             top.Children.Add(left);

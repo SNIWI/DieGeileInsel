@@ -219,7 +219,7 @@ namespace DynamicIsland
 
         static string Norm(string s) => new string((s ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
 
-        static IntPtr FindWindow(string appName, string aumid)
+        public static IntPtr FindWindow(string appName, string aumid)
         {
             string want = Norm(appName);
             // App-ID ohne Paket-Anhang (z. B. „5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App“ → Paket-Familie)

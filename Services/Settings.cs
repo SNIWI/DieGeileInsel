@@ -206,6 +206,9 @@ namespace DynamicIsland
         /// <summary>Ohne Stadt den Windows-Standort benutzen (nur auf Wunsch).</summary>
         public bool WeatherUseLocation { get; set; }
 
+        // Weltuhr (null = Standard-Städte beim ersten Start)
+        public List<WorldCity> WorldClocks { get; set; }
+
         // Kurzbefehle (null = Standard-Liste beim ersten Start)
         public List<ShortcutConfig> Shortcuts { get; set; }
 
@@ -214,6 +217,10 @@ namespace DynamicIsland
         public bool MirrorNotifications { get; set; } = true;
         /// <summary>Antworten aus der Island bei WhatsApp/Discord-DMs direkt absenden (sonst nur in den Chat einfügen).</summary>
         public bool ReplyAutoSend { get; set; } = true;
+        /// <summary>Wenn möglich unsichtbar senden (Chat ist in der App schon offen, App hat einen Senden-Knopf) – ohne das Fenster nach vorn zu holen.</summary>
+        public bool ReplyBackground { get; set; } = true;
+        /// <summary>Nach dem Senden zurück zum vorherigen Fenster (App wieder minimieren, wenn sie es vorher war).</summary>
+        public bool ReplyReturn { get; set; } = true;
 
         // Discord (eigene Anwendung aus dem Developer Portal; wird nur lokal gespeichert)
         public bool DiscordEnabled { get; set; }
@@ -384,6 +391,7 @@ namespace DynamicIsland
             if (s.PageFont <= 0) s.PageFont = 1.2;
             if (string.IsNullOrEmpty(s.PageStyle)) s.PageStyle = "clean";
             s.WidgetPages ??= new List<WidgetPageConfig>();
+            s.WorldClocks ??= WorldClockActivity.Defaults();
             if (!s.Pages.Contains("dashboard")) s.Pages.Insert(0, "dashboard");
             if (string.IsNullOrWhiteSpace(s.AirPodsNameFilter)) s.AirPodsNameFilter = "AirPods";
             if (s.AirPodsRssi == 0) s.AirPodsRssi = -65;

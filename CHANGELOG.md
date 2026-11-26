@@ -10,7 +10,10 @@ Alle wichtigen Änderungen an Die Geile Insel. Neueste Version oben.
 - Licht beim Verbinden nach Akkustand: rot, gelb, grün mit einstellbaren Grenzen (Einstellungen → Animationen)
 - Player bei Webseiten: Logo und Name der Seite statt Chrome-Logo und „Google Chrome“
 - Notiz: neue Seite und Kachel zum schnellen Aufschreiben, speichert automatisch
+- Weltuhr: Uhr in der Übersicht antippen zeigt Uhrzeiten anderer Städte, Städte einstellbar wie beim Wetter (Einstellungen → Weltuhr), auch als Seite und Kachel
 - Player-Animationen: Cover gleitet beim Songwechsel in Richtung Weiter/Zurück, Titel mit Unschärfe, Leuchten wechselt die Farbe fließend und atmet, Knöpfe stupsen, kleine Island federt beim Songwechsel
+- Antworten: nach dem Senden zurück zum vorherigen Fenster, App wird wieder minimiert, wenn sie es vorher war
+- Antworten: unsichtbar senden, wenn die App es zulässt und der Chat schon offen ist (nicht bei WhatsApp und Discord möglich)
 
 ### Geändert
 

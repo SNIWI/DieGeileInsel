@@ -79,6 +79,7 @@ namespace DynamicIsland
             new Page { Group = "Planen",            Key = "calendar",  Title = "Kalender",     Glyph = "\uE787", Tint = Ui.Red,    Subtitle = "Termine anzeigen, erinnern und ansagen" },
             new Page { Group = "Planen",            Key = "todo",      Title = "To Do & Erinnerungen", Glyph = "\uE73A", Tint = Ui.Blue, Subtitle = "Microsoft To Do – und Apple-Erinnerungen über dein Outlook-Konto" },
             new Page { Group = "Planen",            Key = "weather",   Title = "Wetter",       Glyph = WeatherActivity.Glyph, Tint = Ui.Teal, Subtitle = "Wetter jetzt, die nächsten Stunden und Tage" },
+            new Page { Group = "Planen",            Key = "worldclock", Title = "Weltuhr",     Glyph = WorldClockActivity.Glyph, Tint = Ui.Orange, Subtitle = "Uhrzeiten in anderen Städten – Uhr in der Übersicht antippen" },
             new Page { Group = "KI",                Key = "ai",        Title = "KI",           Glyph = "\uE8BD", Tint = Ui.Purple, Subtitle = "Gemini-Chat, Text-Drop-Zone und Texterkennung" },
             new Page { Group = "KI",                Key = "claude",    Title = "Claude",       Glyph = "\uE945", Logo = s => Logos.Claude(s, 1, Colors.White), Tint = ClaudeTracker.Orange, Subtitle = "Sehen, was Claude Code gerade macht – und wie lange schon" },
         };
@@ -213,6 +214,7 @@ namespace DynamicIsland
                 case "ai": BuildAi(root); break;
                 case "claude": BuildClaude(root); break;
                 case "weather": BuildWeather(root); break;
+                case "worldclock": BuildWorldClock(root); break;
                 case "calendar": BuildCalendar(root); break;
                 case "todo": BuildTodo(root); break;
                 case "obsidian": BuildObsidian(root); break;
@@ -767,6 +769,10 @@ namespace DynamicIsland
             nt.Children.Add(Divider());
             nt.Children.Add(ToggleRow("Antworten direkt absenden (WhatsApp, Discord-DMs)", s.ReplyAutoSend, v => { s.ReplyAutoSend = v; s.Save(); }, out _));
             nt.Children.Add(Divider());
+            nt.Children.Add(ToggleRow("Im Hintergrund senden, wenn der Chat schon offen ist (Fenster bleibt, wo es ist)", s.ReplyBackground, v => { s.ReplyBackground = v; s.Save(); }, out _));
+            nt.Children.Add(Divider());
+            nt.Children.Add(ToggleRow("Nach dem Senden zurück zum vorherigen Fenster", s.ReplyReturn, v => { s.ReplyReturn = v; s.Save(); }, out _));
+            nt.Children.Add(Divider());
             notifStatus = StatusText("Status: " + host.Notifications.Status);
             nt.Children.Add(notifStatus);
             nt.Children.Add(Divider());
@@ -1284,6 +1290,82 @@ namespace DynamicIsland
                                      "dafür wird nur der Ort (bzw. die ungefähren Koordinaten) übertragen. Aktualisiert sich alle 15 Minuten."));
         }
 
+        void BuildWorldClock(StackPanel root)
+        {
+            root.Children.Add(Header("In der Island"));
+            var vis = new StackPanel();
+            vis.Children.Add(ToggleRow("Eigene Seite „Weltuhr“", s.Pages?.Contains("worldclock") == true, v => SetIslandPage("worldclock", v), out _));
+            root.Children.Add(Card(vis));
+            root.Children.Add(Footer("Auch ohne eigene Seite: in der Übersicht auf die Uhr tippen."));
+
+            root.Children.Add(Header("Städte"));
+            var c = new StackPanel();
+            var list = s.WorldClocks ??= WorldClockActivity.Defaults();
+            for (int i = 0; i < list.Count; i++)
+            {
+                int at = i;
+                var city = list[i];
+                var row = new Grid { MinHeight = 48, Margin = new Thickness(16, 0, 12, 0) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var z = WorldClockActivity.Zone(city.Zone);
+                string now = z == null ? "Zeitzone unbekannt" : TimeZoneInfo.ConvertTime(DateTime.UtcNow, TimeZoneInfo.Utc, z).ToString("HH:mm") + " Uhr";
+                var lbl = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                lbl.Children.Add(Ui.Text(city.Name, 13.5, Ui.White, false));
+                lbl.Children.Add(Ui.Text((string.IsNullOrEmpty(city.Country) ? "" : city.Country + " · ") + now, 11.5, Ui.Dim, false));
+                var btns = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                if (at > 0)
+                {
+                    var up = SmallButton("Nach oben", () =>
+                    {
+                        list.RemoveAt(at); list.Insert(at - 1, city);
+                        s.Save();
+                        Later(() => ShowPage("worldclock"));
+                    });
+                    up.Margin = new Thickness(0, 0, 6, 0);
+                    btns.Children.Add(up);
+                }
+                btns.Children.Add(SmallButton("Entfernen", () =>
+                {
+                    list.RemoveAt(at);
+                    s.Save();
+                    Later(() => ShowPage("worldclock"));
+                }, true));
+                Grid.SetColumn(btns, 1);
+                row.Children.Add(lbl);
+                row.Children.Add(btns);
+                c.Children.Add(row);
+                c.Children.Add(Divider());
+            }
+            var box = Field("", 14, false);
+            box.MaxLength = 60;
+            c.Children.Add(PlainField("Stadt", box));
+            c.Children.Add(Divider());
+            var status = StatusText(list.Count >= WorldClockActivity.Max
+                ? $"Höchstens {WorldClockActivity.Max} Städte – entferne erst eine."
+                : "Stadt eintippen, z. B. „Los Angeles“ oder „Sydney“.");
+            c.Children.Add(status);
+            c.Children.Add(Divider());
+            c.Children.Add(ButtonRow(
+                FilledSmall("Hinzufügen", async () =>
+                {
+                    if (list.Count >= WorldClockActivity.Max) { status.Text = $"Höchstens {WorldClockActivity.Max} Städte – entferne erst eine."; return; }
+                    status.Text = "Suche …";
+                    WorldCity found = null;
+                    try { found = await WorldClockActivity.FindAsync(box.Text); }
+                    catch (Exception ex) { Program.Log(ex); status.Text = "Suche fehlgeschlagen – bist du online?"; return; }
+                    if (found == null) { status.Text = "„" + box.Text.Trim() + "“ nicht gefunden."; return; }
+                    if (list.Any(x => x.Name == found.Name && x.Zone == found.Zone)) { status.Text = found.Name + " ist schon dabei."; return; }
+                    list.Add(found);
+                    s.Save();
+                    Later(() => { if (page == "worldclock") ShowPage("worldclock"); });
+                }),
+                SmallButton("Weltuhr zeigen", () => host.ShowWorldClock())));
+            root.Children.Add(Card(c));
+            root.Children.Add(Footer("Die Stadtsuche läuft kostenlos über Open-Meteo (wie beim Wetter) und liefert die Zeitzone gleich mit. " +
+                                     "Sommer- und Winterzeit rechnet Windows automatisch. Bis zu " + WorldClockActivity.Max + " Städte."));
+        }
+
         // =================================================================
         //  Claude Code
         // =================================================================
@@ -1472,7 +1554,7 @@ namespace DynamicIsland
         {
             ("player", "Player", "\uE8D6"), ("sound", "Ton", "\uE767"), ("brightness", "Helligkeit", "\uE706"),
             ("clipboard", "Zwischenablage", "\uE77F"), ("apps", "Apps", "\uE7C4"), ("shortcuts", "Kurzbefehle", "\uE8A9"),
-            ("downloads", "Downloads", "\uE896"), ("bluetooth", "Bluetooth / AirPods", "\uE702"), ("ai", "Gemini", "\uE8BD"), ("weather", "Wetter", WeatherActivity.Glyph), ("calendar", "Kalender", "\uE787"), ("todo", "To Do", "\uE73A"), ("note", "Notiz", NoteActivity.Glyph),
+            ("downloads", "Downloads", "\uE896"), ("bluetooth", "Bluetooth / AirPods", "\uE702"), ("ai", "Gemini", "\uE8BD"), ("weather", "Wetter", WeatherActivity.Glyph), ("calendar", "Kalender", "\uE787"), ("todo", "To Do", "\uE73A"), ("note", "Notiz", NoteActivity.Glyph), ("worldclock", "Weltuhr", WorldClockActivity.Glyph),
         };
 
         (string name, string glyph) PageInfo(string key)
