@@ -5270,7 +5270,7 @@ namespace DynamicIsland
             {
                 foreach (var d in now.Except(lastDrives))
                 {
-                    string label = "USB-Stick", info = d;
+                    string label = "USB-Stick", info = d, free = null;
                     double? used = null;
                     bool hdd = false;
                     try
@@ -5281,12 +5281,13 @@ namespace DynamicIsland
                         if (di.TotalSize > 0)
                         {
                             used = 1 - (double)di.AvailableFreeSpace / di.TotalSize;
-                            info = $"{d} · {DownloadWatcher.FormatSize(di.AvailableFreeSpace)} frei von {DownloadWatcher.FormatSize(di.TotalSize)}";
+                            free = DownloadWatcher.FormatSize(di.AvailableFreeSpace);
+                            info = $"{d.TrimEnd('\\')} · {DownloadWatcher.FormatSize(di.TotalSize - di.AvailableFreeSpace)} von {DownloadWatcher.FormatSize(di.TotalSize)} belegt";
                         }
                     }
                     catch { }
                     var path = d;
-                    ShowDeviceAlert("usb-in", hdd ? "\uEDA2" : "\uE88E", label, info, used, Ui.Accent, () => { Open(path); return true; }, battery: false);   // Ring = belegter Speicher, kein Akku
+                    ShowDeviceAlert("usb-in", hdd ? "\uEDA2" : "\uE88E", label, info, used, Ui.Accent, () => { Open(path); return true; }, battery: false, free: free);   // kein Akku: freier Speicher mit Balken statt Ring
                 }
                 foreach (var d in lastDrives.Except(now))
                 {
@@ -5329,7 +5330,7 @@ namespace DynamicIsland
             return pct < low ? Ui.Red : pct < high ? Ui.Yellow : Ui.Green;
         }
 
-        void ShowDeviceAlert(string id, string glyph, string title, string subtitle, double? fraction, Color ring, Func<bool> tap = null, bool battery = true)
+        void ShowDeviceAlert(string id, string glyph, string title, string subtitle, double? fraction, Color ring, Func<bool> tap = null, bool battery = true, string free = null)
         {
             // eigene Farbe für dieses Gerät (Einstellungen → Animationen → Farbe pro Gerät): Licht und Symbol
             Color? devColor = null;
@@ -5361,9 +5362,25 @@ namespace DynamicIsland
                 g.TapAction = tap;
                 Func<FrameworkElement> ringF = () => new RingGauge(fraction ?? 0, ring, 46, 4);
                 Func<FrameworkElement> checkF = () => Ui.Glyph("\uE73E", 20, Ui.Br(Ui.Green));
-                g.RightFactory = fraction.HasValue ? ringF : checkF;
+                // Akku: Ring. Speicher (USB-Stick, Festplatte): freier Platz mit Balken – der Ring sah dort wie ein Akku aus
+                Func<FrameworkElement> storeF = () => StorageGauge(fraction ?? 0, free);
+                g.RightFactory = !fraction.HasValue ? checkF : battery ? ringF : storeF;
             });
             Rebuild(a);
+        }
+
+        /// <summary>Speicheranzeige: „12,4 GB frei“ über einem Balken (belegter Anteil; orange ab 80 %, rot ab 90 %).</summary>
+        static FrameworkElement StorageGauge(double used, string free)
+        {
+            used = Math.Max(0, Math.Min(1, used));
+            var c = used >= 0.9 ? Ui.Red : used >= 0.8 ? Ui.Orange : Ui.Blue;
+            var txt = Ui.Text((string.IsNullOrEmpty(free) ? Math.Round((1 - used) * 100) + " %" : free) + " frei", 12.5, Ui.White);
+            txt.HorizontalAlignment = HorizontalAlignment.Right;
+            var bar = new Bar(6, Ui.Br(c)) { Width = 92, Margin = new Thickness(0, 5, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
+            bar.Value = used;
+            var box = Ui.VStack(0, txt, bar);
+            box.VerticalAlignment = VerticalAlignment.Center;
+            return box;
         }
 
         // Kopfhörer wie AirPods verbinden/trennen sich in der Ruhephase ständig neu – nicht jedes Mal melden
@@ -5604,6 +5621,7 @@ namespace DynamicIsland
             if (path.StartsWith("/test") && q["event"] == "battery") { PreviewBatteryGlow(int.TryParse(q["pct"], out var bp) ? Math.Max(0, Math.Min(100, bp)) : 50); return; }   // Licht nach Akkustand vorführen
             if (path.StartsWith("/test") && q["event"] == "msg") { ShowMessage(q["app"] ?? "WhatsApp", q["title"] ?? "Luca", q["body"] ?? "Kommst du heute noch?", null, null); return; }   // echte Nachricht vorführen (Verlauf, App-Farbe)
             if (path.StartsWith("/test") && q["event"] == "song") { PlayerUi.TestChange = q["dir"] == "-1" ? -1 : 1; return; }   // Songwechsel-Animation im Player vorführen
+            if (path.StartsWith("/test") && q["event"] == "usb") { ShowDeviceAlert("usb-in", "", "USB-Stick", "E: · 16,5 GB von 28,9 GB belegt", 0.57, Ui.Accent, null, battery: false, free: "12,4 GB"); return; }   // USB-Stick-Meldung vorführen
             if (path.StartsWith("/test") && q["event"] == "fg")                               // Zurückspringen prüfen: Fenster mit diesem Titel nach vorn holen
             {
                 var fh = AppActivator.FindWindow(q["title"] ?? "", null);

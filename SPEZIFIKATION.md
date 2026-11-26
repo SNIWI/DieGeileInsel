@@ -519,6 +519,7 @@ flowchart LR
   - `?event=battery&pct=…`: Kopfhörer mit diesem Akkustand verbinden (Licht nach Akkustand)
   - `?event=site&title=…`: Webseite zum Fenstertitel suchen, Logo als `site-logo.png` im Datenordner speichern
   - `?event=song&dir=1|-1`: Songwechsel-Animation im offenen Player vorführen
+  - `?event=usb`: Meldung „USB-Stick eingesteckt“ vorführen
   - `?event=replyprobe&app=…&sender=…`: prüfen, ob unsichtbares Antworten ginge (sendet nichts), Ergebnis in `replyprobe.txt`
   - `?event=fg&title=…`: Fenster nach vorn holen (Zurückspringen testen)
 - **`/player`** (GET) – `?app=…`: Player wechseln (Teil von App-Name, App-ID oder Titel)

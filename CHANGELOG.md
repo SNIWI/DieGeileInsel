@@ -19,6 +19,10 @@ Alle wichtigen Änderungen an Die Geile Insel. Neueste Version oben.
 
 - Mitteilungen über Smartphone-Link standardmäßig ohne Antworten-Knopf
 
+### Behoben
+
+- USB-Stick und externe Festplatte zeigten beim Einstecken einen Ring, der wie eine Akkuanzeige aussah; jetzt freier Speicher mit Balken (blau, ab 80 % belegt orange, ab 90 % rot)
+
 ## [1.5.0] – 24.11.2026
 
 ### Neu
