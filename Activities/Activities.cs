@@ -107,9 +107,9 @@ namespace DynamicIsland
             root.Children.Add(top);
 
             // Fortschritt: anklicken oder ziehen zum Spulen, Zeiten darunter (wie Apple Music)
-            eSeek = new DragBar(Ui.AccentBrush, 5);
-            // links die verbleibende Zeit, rechts die Länge des Titels
-            eSeek.Changed = f => ePos.Text = "-" + Ui.Fmt(TimeSpan.FromTicks((long)(m.Duration.Ticks * (1 - f))));
+            eSeek = PlayerUi.SeekBar();
+            // links die gespielte Zeit, rechts die verbleibende (wie Apple Music); Knopf erst beim Drüberfahren
+            eSeek.Changed = f => { ePos.Text = Ui.Fmt(TimeSpan.FromTicks((long)(m.Duration.Ticks * f))); eDur.Text = "-" + Ui.Fmt(TimeSpan.FromTicks((long)(m.Duration.Ticks * (1 - f)))); };
             eSeek.Committed = f => m.Seek(f);
             ePos = Ui.Text("0:00", 11, Ui.Dim, false, true);
             eDur = Ui.Text("", 11, Ui.Dim, false, true);
@@ -185,14 +185,16 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             eTitle.Text = m.Title;
             eArtist.Text = m.Artist;
             eApp.Text = string.IsNullOrEmpty(m.AppName) ? "" : "In " + m.AppName + " öffnen";
-            ePlay.Text = m.Playing ? "" : "";
             player?.Animate(m.Title + "|" + m.Artist, m.Playing, m.Accent, ePlay);
             if (!eSeek.Dragging)
             {
-                ePos.Text = m.Duration > TimeSpan.Zero ? "-" + Ui.Fmt(m.Duration - m.Position) : "";
+                ePos.Text = m.Duration > TimeSpan.Zero ? Ui.Fmt(m.Position) : "";
+                eDur.Text = m.Duration > TimeSpan.Zero ? "-" + Ui.Fmt(m.Duration - m.Position) : "";
                 eSeek.Bar.Value = m.Duration.TotalSeconds > 0 ? m.Position.TotalSeconds / m.Duration.TotalSeconds : 0;
             }
-            eDur.Text = m.Duration > TimeSpan.Zero ? Ui.Fmt(m.Duration) : "";
+            // Livestream/Radio ohne Länge: kein leerer Balken
+            var seekVis = m.Duration > TimeSpan.Zero ? Visibility.Visible : Visibility.Hidden;
+            if (eSeek.Visibility != seekVis) eSeek.Visibility = seekVis;
 
             var acc = Ui.Br(m.Accent);
             eShuffle.Visibility = m.CanShuffle ? Visibility.Visible : Visibility.Hidden;
@@ -689,9 +691,7 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
     public sealed class DashboardActivity : Activity
     {
         readonly IslandWindow host;
-        TextBlock time, date, cpuT, ramT, batT;
-        Bar cpuB, ramB;
-        BatteryIcon bat;
+        TextBlock time, date;
         // Mini-Player
         Image miniArt;
         TextBlock miniTitle, miniArtist, miniPlay;
@@ -773,7 +773,6 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             left.MouseLeftButtonDown += (s, e) => e.Handled = true;
             left.MouseLeftButtonUp += (s, e) => { e.Handled = true; host.ShowWorldClock(); };
             miniArt = null; miniTitle = miniArtist = miniPlay = null; miniShownArt = null;
-            cpuB = null; ramB = null; cpuT = null; ramT = null; bat = null; batT = null;
             top.Children.Add(left);
             var widget = HasPlayer ? BuildMiniPlayer() : WeatherGlance();
             if (widget != null)
@@ -918,21 +917,6 @@ Grid.SetColumn(mute, 0); Grid.SetColumn(eVol, 1); Grid.SetColumn(eVolT, 2);
             miniArtist.Text = string.IsNullOrEmpty(m.AppName) ? m.Artist : m.Artist + " · " + m.AppName;
             miniPlay.Text = m.Playing ? "\uE769" : "\uE768";
             if (m.Art != miniShownArt) { miniShownArt = m.Art; miniArt.Source = m.Art; }
-        }
-
-        static FrameworkElement StatRow(string label, Color c, out Bar bar, out TextBlock val)
-        {
-            var g = new Grid { Margin = new Thickness(0, 3, 0, 3) };
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
-            var l = Ui.Text(label, 11, Ui.Dim, false);
-            bar = new Bar(5, Ui.Br(c)) { Margin = new Thickness(4, 0, 8, 0) };
-            val = Ui.Text("", 11.5, Ui.White, true, true);
-            val.HorizontalAlignment = HorizontalAlignment.Right;
-            Grid.SetColumn(l, 0); Grid.SetColumn(bar, 1); Grid.SetColumn(val, 2);
-            g.Children.Add(l); g.Children.Add(bar); g.Children.Add(val);
-            return g;
         }
 
         public override void Update()

@@ -581,8 +581,8 @@ namespace DynamicIsland
             Bar.ValueChanged += v => PlaceKnob();
             SizeChanged += (s, e) => PlaceKnob();
 
-            MouseEnter += (s, e) => { Bar.Height = baseHeight + 2; if (!Dragging) Ui.Press(knobScale, 1.08, 160, new SpringEase()); };
-            MouseLeave += (s, e) => { if (!Dragging) { Bar.Height = baseHeight; Ui.Press(knobScale, 1, 260, new SpringEase()); } };
+            MouseEnter += (s, e) => { Bar.Height = baseHeight + 2; KnobFade(true); if (!Dragging) Ui.Press(knobScale, 1.08, 160, new SpringEase()); };
+            MouseLeave += (s, e) => { if (!Dragging) { Bar.Height = baseHeight; KnobFade(false); Ui.Press(knobScale, 1, 260, new SpringEase()); } };
             MouseLeftButtonDown += (s, e) =>
             {
                 e.Handled = true;
@@ -602,11 +602,12 @@ namespace DynamicIsland
                 ReleaseMouseCapture();
                 knob.Lift(false);
                 Ui.Press(knobScale, IsMouseOver ? 1.08 : 1, 380, new SpringEase());
-                if (!IsMouseOver) Bar.Height = baseHeight;
+                if (!IsMouseOver) { Bar.Height = baseHeight; KnobFade(false); }
             };
             LostMouseCapture += (s, e) =>
             {
                 Dragging = false;
+                if (!IsMouseOver) KnobFade(false);
                 knob.Lift(false);
                 Ui.Press(knobScale, 1, 300, new SpringEase());
             };
@@ -632,6 +633,20 @@ namespace DynamicIsland
         }
 
         static double Clamp(double v) => Math.Max(0, Math.Min(1, v));
+
+        bool autoKnob;
+        /// <summary>Knopf nur beim Drüberfahren/Ziehen zeigen (Player wie bei Apple Music: in Ruhe nur ein schlanker Balken).</summary>
+        public bool AutoKnob
+        {
+            get => autoKnob;
+            set { autoKnob = value; knob.BeginAnimation(OpacityProperty, null); knob.Opacity = value && !IsMouseOver && !Dragging ? 0 : 1; }
+        }
+
+        void KnobFade(bool show)
+        {
+            if (!autoKnob) return;
+            knob.BeginAnimation(OpacityProperty, new DoubleAnimation(show ? 1 : 0, TimeSpan.FromMilliseconds(Ui.ReduceMotion ? 1 : show ? 140 : 260)));
+        }
 
         // Knopf sitzt mittig über dem Ende der Füllung, bleibt aber innerhalb des Reglers
         void PlaceKnob()

@@ -31,6 +31,8 @@ namespace DynamicIsland
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         readonly Settings s;
         bool busy;
+        /// <summary>Zuletzt protokollierter Fehler je Adresse – derselbe Fehler landet nur einmal im Protokoll (nicht alle 10 Minuten).</summary>
+        readonly Dictionary<string, string> loggedErr = new Dictionary<string, string>();
 
         public List<CalEvent> Events { get; private set; } = new List<CalEvent>();
         public DateTime LastSync { get; private set; }
@@ -88,8 +90,18 @@ namespace DynamicIsland
                         if (ics.IndexOf("BEGIN:VCALENDAR", StringComparison.OrdinalIgnoreCase) < 0) { err = "Adresse liefert keinen Kalender"; continue; }
                         all.AddRange(Ics.Parse(ics, from, to));
                         ok++;
+                        loggedErr.Remove(u);
                     }
-                    catch (Exception ex) { err = ex is HttpRequestException ? "Kalender nicht erreichbar" : ex.Message; Program.Log(ex); }
+                    catch (Exception ex)
+                    {
+                        int code = ex is HttpRequestException hx && hx.StatusCode.HasValue ? (int)hx.StatusCode.Value : 0;
+                        err = code == 401 || code == 403 ? "Kalender-Adresse abgelaufen oder ohne Freigabe – neu kopieren (Einstellungen → Kalender)"
+                            : code == 404 ? "Kalender-Adresse gibt es nicht mehr – neu kopieren (Einstellungen → Kalender)"
+                            : ex is HttpRequestException || ex is TaskCanceledException ? "Kalender nicht erreichbar"
+                            : ex.Message;
+                        string sig = ex.GetType().Name + code;
+                        if (!loggedErr.TryGetValue(u, out var last) || last != sig) { loggedErr[u] = sig; Program.Log(ex); }
+                    }
                 }
                 if (ok > 0)
                 {

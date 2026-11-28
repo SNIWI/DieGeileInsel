@@ -11,6 +11,7 @@ Alle wichtigen Änderungen an Die Geile Insel. Neueste Version oben.
 - Player bei Webseiten: Logo und Name der Seite statt Chrome-Logo und „Google Chrome“
 - Notiz: neue Seite und Kachel zum schnellen Aufschreiben, speichert automatisch
 - Weltuhr: Uhr in der Übersicht antippen zeigt Uhrzeiten anderer Städte, Städte einstellbar wie beim Wetter (Einstellungen → Weltuhr), auch als Seite und Kachel
+- Player: Play/Pause-Symbol verwandelt sich weich, Schatten des Covers wird beim Pausieren flacher
 - Player-Animationen: Cover gleitet beim Songwechsel in Richtung Weiter/Zurück, Titel mit Unschärfe, Leuchten wechselt die Farbe fließend und atmet, Knöpfe stupsen, kleine Island federt beim Songwechsel
 - Antworten: nach dem Senden zurück zum vorherigen Fenster, App wird wieder minimiert, wenn sie es vorher war
 - Antworten: unsichtbar senden, wenn die App es zulässt und der Chat schon offen ist (nicht bei WhatsApp und Discord möglich)
@@ -18,10 +19,14 @@ Alle wichtigen Änderungen an Die Geile Insel. Neueste Version oben.
 ### Geändert
 
 - Mitteilungen über Smartphone-Link standardmäßig ohne Antworten-Knopf
+- Player aufgeräumt: schlanke Spulleiste, Knopf erst beim Drüberfahren, links gespielte und rechts verbleibende Zeit; Songwechsel gleitet ruhiger ohne Nachfedern; Leuchten atmet nur, während Musik läuft
 
 ### Behoben
 
 - USB-Stick und externe Festplatte zeigten beim Einstecken einen Ring, der wie eine Akkuanzeige aussah; jetzt freier Speicher mit Balken (blau, ab 80 % belegt orange, ab 90 % rot)
+- Titel im Player war bei Streams im Browser nur eine Adresse (z. B. „stream.example.com/live.mp3“); jetzt „Livestream“ oder der Dateiname, leere Spulleiste bei Livestreams ausgeblendet
+- Titel im Player wurde nach dem Songwechsel nicht mehr ganz scharf (Unschärfe blieb aktiv)
+- Kalender: abgelaufene Adresse (401) schrieb alle 10 Minuten einen Fehler ins Protokoll; jetzt einmal, mit Hinweis „neu kopieren“
 
 ## [1.5.0] – 24.11.2026
 

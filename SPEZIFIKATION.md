@@ -252,15 +252,18 @@ flowchart LR
     - Ohne echtes Cover (Bild mit durchsichtigen Stellen = Browser-Logo) zeigt der Player das Logo der Seite: Icons aus dem HTML (größtes zuerst), sonst `apple-touch-icon.png`, sonst `favicon.ico`, sonst die Hauptdomain; mittig auf dunkler Fläche in der Logofarbe
     - Logos werden direkt von der Seite geladen (kein fremder Dienst) und pro Domain im Arbeitsspeicher gehalten
   - Anzeige: Quellenname im Player („In Deezer öffnen“), Player-Wechsler mit schönen App-Namen (auch Opera, Brave)
+  - Titel, der nur eine Adresse ist (Stream oder Datei direkt im Browser): Dateiname als Titel („Mein Lied“), sonst „Livestream“; Server als Künstler (`MediaService.CleanTitle`)
 - **SpotifyService:** Spotify Web API (OAuth, Redirect `http://127.0.0.1:8898/callback`)
   - Gefällt mir, Geräte, Playlists, Lautstärke (Steuern nur mit Premium)
 - **Player-Wechsler:** alle Quellen mit Status und Titel; Auswahl angeheftet bis „Automatisch“
 - **Player-Design (`PlayerUi`):**
   - Cover 124 px mit Farbleuchten links; Titel, Künstler, Gerät, Spulleiste, Steuerung rechts
-  - Cover schrumpft bei Pause (0,88), Play-Knopf federt
-  - Songwechsel: altes Cover gleitet hinaus, neues aus der anderen Seite herein (Richtung nach Weiter/Zurück), Titel gleitet mit Unschärfe herein, Leuchten blitzt kurz auf
+  - Spulleiste (`PlayerUi.SeekBar`): schlank (4 px), hell, Knopf erst beim Drüberfahren/Ziehen (`DragBar.AutoKnob`); links gespielte, rechts verbleibende Zeit; ohne Länge (Livestream) ausgeblendet
+  - Pause: Cover sinkt ruhig auf 0,88, Schatten wird flacher, Leuchten schwächer und hört auf zu atmen (spart Rechenzeit); Play: Cover federt mit leichtem Überschwingen zurück
+  - Play/Pause-Symbol verwandelt sich: schrumpft, wechselt, federt zurück (statt zu springen)
+  - Songwechsel: altes Cover gleitet hinaus, neues aus der anderen Seite herein und läuft weich aus (ohne Überschwingen), Titel gleitet mit Unschärfe herein (Unschärfe nur während der Animation, damit die Schrift scharf bleibt), Leuchten blitzt kurz auf
   - Kommt der Titel vor dem Cover (Windows-Medien), wird der Cover-Wechsel nachgeholt, sobald es da ist (max. 3 s)
-  - Farbe des Leuchtens gleitet zum neuen Cover über; Leuchten atmet langsam
+  - Farbe des Leuchtens gleitet zum neuen Cover über; Leuchten atmet langsam, nur während Musik läuft
   - Weiter/Zurück-Knopf stupst in seine Richtung; kleine Island: Cover federt auf, Titel rollt von unten herein
   - Bei „Animationen aus“ in Windows ohne Bewegung
 - „Zurück zum Player“ öffnet den Player immer (auch pausiert, 2 Minuten erreichbar)
@@ -289,7 +292,7 @@ flowchart LR
 - iCal-Adressen (Google, Outlook, iCloud), verschlüsselt gespeichert, alle 10 min geladen
 - Erinnerung X Minuten vorher, Meldung bei Beginn, Ansage per Sprachausgabe
 - „Beitreten“ bei Online-Meetings, Countdown-Aktivität
-- Ladefehler (z. B. 401) werden auf der Seite angezeigt statt „Wird geladen …“
+- Ladefehler werden auf der Seite angezeigt statt „Wird geladen …“; 401/403/404 als „Adresse abgelaufen – neu kopieren“; derselbe Fehler landet nur einmal im Protokoll
 - **Einstellungen:** eigene Seite an/aus, Wetter links auf der Kalender-Seite (`CalendarWithWeather`)
 - Migration v8 trennt die frühere Seite „Heute“ in Wetter und Kalender
 
@@ -519,6 +522,7 @@ flowchart LR
   - `?event=battery&pct=…`: Kopfhörer mit diesem Akkustand verbinden (Licht nach Akkustand)
   - `?event=site&title=…`: Webseite zum Fenstertitel suchen, Logo als `site-logo.png` im Datenordner speichern
   - `?event=song&dir=1|-1`: Songwechsel-Animation im offenen Player vorführen
+  - `?event=pause`: Play/Pause-Animation im offenen Player vorführen (2,5 s)
   - `?event=usb`: Meldung „USB-Stick eingesteckt“ vorführen
   - `?event=replyprobe&app=…&sender=…`: prüfen, ob unsichtbares Antworten ginge (sendet nichts), Ergebnis in `replyprobe.txt`
   - `?event=fg&title=…`: Fenster nach vorn holen (Zurückspringen testen)

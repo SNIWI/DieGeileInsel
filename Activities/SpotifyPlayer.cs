@@ -106,9 +106,9 @@ namespace DynamicIsland
             top.Children.Add(texts); top.Children.Add(right);
 
             // Fortschritt
-            eSeek = new DragBar(Ui.SpotifyBrush, 5);
-            // links die verbleibende Zeit, rechts die Länge des Titels
-            eSeek.Changed = f => ePos.Text = "-" + Ui.Fmt(TimeSpan.FromMilliseconds((sp.Track?.DurationMs ?? 0) * (1 - f)));
+            eSeek = PlayerUi.SeekBar();
+            // links die gespielte Zeit, rechts die verbleibende (wie Apple Music); Knopf erst beim Drüberfahren
+            eSeek.Changed = f => { double ms = sp.Track?.DurationMs ?? 0; ePos.Text = Ui.Fmt(TimeSpan.FromMilliseconds(ms * f)); eDur.Text = "-" + Ui.Fmt(TimeSpan.FromMilliseconds(ms * (1 - f))); };
             eSeek.Committed = f => sp.Seek(f);
             ePos = Ui.Text("0:00", 11, Ui.Dim, false, true);
             eDur = Ui.Text("", 11, Ui.Dim, false, true);
@@ -195,16 +195,15 @@ namespace DynamicIsland
             eTitle.Text = t?.Title ?? "Nichts läuft";
             eArtist.Text = t?.Artist ?? "";
             eDevice.Text = sp.Device != null ? "▸ " + sp.Device.Name : "Gerät wählen";
-            ePlay.Text = playing ? "" : "";
             player?.Animate((t?.Id ?? t?.Title ?? "") + "|" + (t?.Artist ?? ""), playing, accent, ePlay);
             eHeart.Text = sp.Liked ? "" : "";
             eHeart.Foreground = sp.Liked ? GreenBrush : Ui.White;
             if (!eSeek.Dragging)
             {
-                ePos.Text = sp.Duration > TimeSpan.Zero ? "-" + Ui.Fmt(sp.Duration - sp.Position) : "";
+                ePos.Text = sp.Duration > TimeSpan.Zero ? Ui.Fmt(sp.Position) : "";
+                eDur.Text = sp.Duration > TimeSpan.Zero ? "-" + Ui.Fmt(sp.Duration - sp.Position) : "";
                 eSeek.Bar.Value = sp.Duration.TotalSeconds > 0 ? sp.Position.TotalSeconds / sp.Duration.TotalSeconds : 0;
             }
-            eDur.Text = sp.Duration > TimeSpan.Zero ? Ui.Fmt(sp.Duration) : "";
             eShuffleG.Foreground = sp.Shuffle ? GreenBrush : Ui.Dim;
             eRepeatG.Foreground = sp.Repeat != "off" ? GreenBrush : Ui.Dim;
             eRepeatG.Text = sp.Repeat == "track" ? "" : "";

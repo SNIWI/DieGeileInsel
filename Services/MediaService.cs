@@ -89,7 +89,7 @@ namespace DynamicIsland
                     try
                     {
                         var p = await x.TryGetMediaPropertiesAsync();
-                        src.Title = p?.Title ?? "";
+                        src.Title = CleanTitle(p?.Title, out _);
                         src.Artist = string.IsNullOrEmpty(p?.Artist) ? (p?.AlbumArtist ?? "") : p.Artist;
                     }
                     catch { }
@@ -176,9 +176,12 @@ namespace DynamicIsland
                 // Beim Songwechsel meldet manche App kurz einen leeren Titel → alten behalten,
                 // damit der Player nicht zuklappt.
                 if (string.IsNullOrWhiteSpace(p.Title) && !string.IsNullOrWhiteSpace(Title)) return;
-                Title = p.Title ?? "";
+                string raw = p.Title ?? "";
                 Artist = string.IsNullOrEmpty(p.Artist) ? (p.AlbumArtist ?? "") : p.Artist;
-                var key = Title + "|" + Artist + "|" + AppId;
+                // Stream oder Datei direkt im Browser geöffnet: Titel ist nur die Adresse („stream.example.com/live/stream.mp3“) → lesbar machen
+                Title = CleanTitle(raw, out string host);
+                if (host != null && string.IsNullOrEmpty(Artist)) Artist = host;
+                var key = raw + "|" + Artist + "|" + AppId;
                 if (key != artKey || (Art == null && p.Thumbnail != null))
                 {
                     artKey = key;
@@ -188,7 +191,7 @@ namespace DynamicIsland
                     // Webseite im Browser: Seite erkennen; ohne echtes Cover (nur Browser-Logo) das Logo der Seite zeigen
                     if (IsBrowser(AppId) && (Provider == null || SiteLogo.LooksLikeIcon(bmp)))
                     {
-                        string t = Title;
+                        string t = raw;
                         var domain = await Task.Run(() => SiteLogo.FindDomain(t));
                         if (key != artKey) return;   // inzwischen anderer Titel
                         Site = domain;
@@ -280,6 +283,34 @@ namespace DynamicIsland
                     await session.TryChangePlaybackPositionAsync((start + TimeSpan.FromTicks((long)(Duration.Ticks * fraction))).Ticks);
             }
             catch { }
+        }
+
+        static readonly System.Text.RegularExpressions.Regex UrlLike = new System.Text.RegularExpressions.Regex(
+            @"^(?:[a-z][a-z0-9+.-]*://)?(?<host>[\w-]+(?:\.[\w-]+)+)(?::\d+)?/\S*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        static readonly string[] MediaExt = { ".mp3", ".aac", ".m4a", ".ogg", ".opus", ".flac", ".wav", ".mp4", ".webm", ".mkv", ".m3u8", ".pls" };
+        static readonly string[] Generic = { "stream", "live", "listen", "index", "play", "playlist", "radio", "audio", "master", "chunklist", "high", "low", "mid" };
+
+        /// <summary>
+        /// Titel, der nur eine Adresse ist, lesbar machen: „…/Mein_Lied.mp3“ → „Mein Lied“, sonst „Livestream“.
+        /// host = Server der Adresse (ohne www), sonst null.
+        /// </summary>
+        public static string CleanTitle(string title, out string host)
+        {
+            host = null;
+            var t = (title ?? "").Trim();
+            var m = UrlLike.Match(t);
+            if (!m.Success) return t;
+            host = m.Groups["host"].Value.ToLowerInvariant();
+            if (host.StartsWith("www.")) host = host.Substring(4);
+            string path = t.Substring(m.Groups["host"].Index + m.Groups["host"].Length);
+            int q = path.IndexOfAny(new[] { '?', '#' });
+            if (q >= 0) path = path.Substring(0, q);
+            string file = Uri.UnescapeDataString(path.TrimEnd('/').Split('/').LastOrDefault() ?? "");
+            string ext = System.IO.Path.GetExtension(file).ToLowerInvariant();
+            string name = MediaExt.Contains(ext) ? System.IO.Path.GetFileNameWithoutExtension(file) : "";
+            name = name.Replace('_', ' ').Replace('-', ' ').Trim();
+            bool useful = name.Length >= 3 && name.Count(char.IsLetter) >= 3 && !Generic.Contains(name.ToLowerInvariant());
+            return useful ? name : "Livestream";
         }
 
         /// <summary>Erkannter Musikdienst (App oder Browser-Tab), z. B. „YouTube Music“, „Deezer“; null = unbekannt.</summary>

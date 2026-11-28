@@ -11,16 +11,21 @@ namespace DynamicIsland
     /// <summary>
     /// Gemeinsamer, aufgeräumter Aufbau für die Player-Seiten (Spotify und andere Medien):
     /// großes Cover links mit weichem Farb-Leuchten, rechts Titel, Spulen und Steuerung.
-    /// Animationen wie bei Apple Music: Cover schrumpft beim Pausieren, Titel gleitet beim Songwechsel herein.
+    /// Animationen wie bei Apple Music: Cover schrumpft beim Pausieren (Schatten wird flacher),
+    /// Songwechsel gleitet in Richtung Weiter/Zurück, Play/Pause verwandelt sich statt zu springen.
     /// </summary>
     public sealed class PlayerUi
     {
         public const double ArtSize = 124;
+        const double PausedScale = 0.88;
+        const double GlowPlaying = 0.7, GlowPaused = 0.22;
+        public const string PlayGlyph = "", PauseGlyph = "";
 
         public Image Art;
         public FrameworkElement ArtBox;
         readonly ScaleTransform artScale = new ScaleTransform(1, 1);
         readonly Border glow;
+        readonly DropShadowEffect shadow;
         readonly TranslateTransform textSlide = new TranslateTransform();
         FrameworkElement texts;
         string shownKey;
@@ -33,7 +38,6 @@ namespace DynamicIsland
         readonly ScaleTransform ghostScale = new ScaleTransform(1, 1);
         readonly SolidColorBrush glowBrush = new SolidColorBrush(Color.FromArgb(200, 0x90, 0x90, 0x98));
         readonly ScaleTransform glowScale = new ScaleTransform(1, 1);
-        readonly BlurEffect textBlur = new BlurEffect { Radius = 0 };
         ImageSource lastSource;
         int hintDir = 1;
         DateTime hintAt;
@@ -41,7 +45,8 @@ namespace DynamicIsland
         public PlayerUi(Action onArtClick, string artTip)
         {
             var box = Ui.ArtBox(ArtSize, 18, out Art);
-            box.Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.55, Color = Colors.Black };
+            shadow = new DropShadowEffect { BlurRadius = 20, ShadowDepth = 5, Direction = 270, Opacity = 0.55, Color = Colors.Black };
+            box.Effect = shadow;
             // Cover in eine abgerundete „Bühne“ legen, damit es beim Hinein-/Hinausgleiten sauber abgeschnitten wird
             box.Children.Remove(Art);
             Art.Clip = null;
@@ -62,19 +67,12 @@ namespace DynamicIsland
                 Width = ArtSize * 0.9, Height = ArtSize * 0.9,
                 CornerRadius = new CornerRadius(ArtSize * 0.45),
                 Background = glowBrush,
-                Effect = new BlurEffect { Radius = 34 },
+                Effect = new BlurEffect { Radius = 34, RenderingBias = RenderingBias.Performance },
                 IsHitTestVisible = false,
-                Opacity = 0.75,
+                Opacity = GlowPlaying,
                 RenderTransformOrigin = new Point(0.5, 0.5),
                 RenderTransform = glowScale
             };
-            if (!Ui.ReduceMotion)
-            {
-                // Leuchten atmet langsam mit der Musik
-                var breathe = new DoubleAnimation(0.94, 1.08, TimeSpan.FromSeconds(2.6)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
-                glowScale.BeginAnimation(ScaleTransform.ScaleXProperty, breathe);
-                glowScale.BeginAnimation(ScaleTransform.ScaleYProperty, breathe);
-            }
             var host = new Grid
             {
                 Width = ArtSize, Height = ArtSize,
@@ -95,13 +93,13 @@ namespace DynamicIsland
         public FrameworkElement Layout(FrameworkElement top, FrameworkElement titleBlock, FrameworkElement seek, FrameworkElement controls)
         {
             texts = titleBlock;
-            if (texts != null) { texts.RenderTransform = textSlide; texts.Effect = textBlur; }
-            var right = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0) };
+            if (texts != null) texts.RenderTransform = textSlide;
+            var right = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 0, 0) };
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             seek.Margin = new Thickness(0, 10, 0, 0);
-            controls.Margin = new Thickness(0, 4, 0, 0);
+            controls.Margin = new Thickness(0, 2, 0, 0);
             controls.HorizontalAlignment = HorizontalAlignment.Center;
             Grid.SetRow(seek, 1);
             Grid.SetRow(controls, 2);
@@ -109,7 +107,7 @@ namespace DynamicIsland
             right.Children.Add(seek);
             right.Children.Add(controls);
 
-            var g = new Grid { Margin = new Thickness(24, 14, 24, 12), VerticalAlignment = VerticalAlignment.Center };
+            var g = new Grid { Margin = new Thickness(24, 16, 24, 12), VerticalAlignment = VerticalAlignment.Center };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             Grid.SetColumn(right, 1);
@@ -120,10 +118,16 @@ namespace DynamicIsland
             return g;
         }
 
+        /// <summary>Einheitlicher Fortschrittsbalken für beide Player: schlank und hell, Knopf erst beim Drüberfahren.</summary>
+        public static DragBar SeekBar(Brush fill = null) =>
+            new DragBar(fill ?? Ui.Br(Colors.White, 225), 4) { AutoKnob = true };
+
         bool waitArt;
         DateTime waitSince;
         /// <summary>Zum Vorführen: ±1 löst beim nächsten Takt einen Songwechsel in dieser Richtung aus.</summary>
         public static int TestChange;
+        /// <summary>Zum Vorführen: true schaltet einmal Play/Pause um (nur die Animation).</summary>
+        public static bool TestToggle;
 
         /// <summary>Weiter (+1) oder Zurück (−1) gedrückt: bestimmt, in welche Richtung der nächste Songwechsel gleitet.</summary>
         public void Hint(int dir) { hintDir = dir < 0 ? -1 : 1; hintAt = DateTime.Now; }
@@ -132,14 +136,23 @@ namespace DynamicIsland
 
         static readonly IEasingFunction Out = new CubicEase { EasingMode = EasingMode.EaseOut };
         static readonly IEasingFunction In = new CubicEase { EasingMode = EasingMode.EaseIn };
+        static readonly IEasingFunction Smooth = new QuinticEase { EasingMode = EasingMode.EaseOut };
 
         void SongChange(bool playing)
         {
             int dir = Dir;
-            // Titel: gleitet aus der Richtung herein und wird dabei scharf
-            textSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(dir * 34, 0, TimeSpan.FromMilliseconds(520)) { EasingFunction = new SpringEase { Damping = 0.75 } });
-            texts?.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(360)) { EasingFunction = Out });
-            textBlur.BeginAnimation(BlurEffect.RadiusProperty, new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = Out });
+            if (texts != null)
+            {
+                // Titel: gleitet aus der Richtung herein und wird dabei scharf.
+                // Die Unschärfe hängt nur während der Animation am Text – sonst verliert er die scharfe Schriftglättung.
+                var blur = new BlurEffect { Radius = 8, RenderingBias = RenderingBias.Performance };
+                texts.Effect = blur;
+                var unblur = new DoubleAnimation(8, 0, TimeSpan.FromMilliseconds(380)) { EasingFunction = Out };
+                unblur.Completed += (s, e) => { if (texts.Effect == blur) texts.Effect = null; };
+                blur.BeginAnimation(BlurEffect.RadiusProperty, unblur);
+                textSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(dir * 26, 0, TimeSpan.FromMilliseconds(560)) { EasingFunction = Smooth });
+                texts.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(340)) { EasingFunction = Out });
+            }
 
             if (Art.Source == lastSource && lastSource != null) { waitArt = true; waitSince = DateTime.Now; return; }
             SlideCover(playing);
@@ -148,29 +161,30 @@ namespace DynamicIsland
         void SlideCover(bool playing)
         {
             int dir = Dir;
-            double d = ArtSize * 0.75;
-            var dur = TimeSpan.FromMilliseconds(520);
+            double d = ArtSize * 0.6;
             // altes Cover: gleitet hinaus, wird kleiner und blendet aus
             if (lastSource != null)
             {
                 ghost.Source = lastSource;
-                ghost.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(380)) { EasingFunction = In });
-                ghostSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, -dir * d, TimeSpan.FromMilliseconds(420)) { EasingFunction = In });
-                var shrink = new DoubleAnimation(1, 0.82, TimeSpan.FromMilliseconds(420)) { EasingFunction = In };
+                ghost.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(340)) { EasingFunction = In });
+                ghostSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, -dir * d, TimeSpan.FromMilliseconds(400)) { EasingFunction = In });
+                var shrink = new DoubleAnimation(1, 0.86, TimeSpan.FromMilliseconds(400)) { EasingFunction = In };
                 ghostScale.BeginAnimation(ScaleTransform.ScaleXProperty, shrink);
                 ghostScale.BeginAnimation(ScaleTransform.ScaleYProperty, shrink);
             }
-            // neues Cover: kommt aus der anderen Seite und federt ein
-            artSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(dir * d, 0, dur) { EasingFunction = new SpringEase { Damping = 0.72 } });
-            Art.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = Out });
-            var pop = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(620) };
-            double b = playing ? 1 : 0.88;
-            pop.KeyFrames.Add(new EasingDoubleKeyFrame(b * 0.93, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(140)), Out));
-            pop.KeyFrames.Add(new EasingDoubleKeyFrame(b, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(620)), new SpringEase { Damping = 0.55 }));
+            // neues Cover: kommt aus der anderen Seite und läuft weich aus (ohne Überschwingen – wirkt ruhiger)
+            artSlide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(dir * d, 0, TimeSpan.FromMilliseconds(560)) { EasingFunction = Smooth });
+            Art.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = Out });
+            // ganz leichtes Einatmen der Größe
+            double b = playing ? 1 : PausedScale;
+            var pop = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(640) };
+            pop.KeyFrames.Add(new EasingDoubleKeyFrame(b * 0.95, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(160)), Out));
+            pop.KeyFrames.Add(new EasingDoubleKeyFrame(b, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(640)), Smooth));
             artScale.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
             artScale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
             // Leuchten blitzt kurz auf
-            glow.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(playing ? 1 : 0.5, playing ? 0.75 : 0.3, TimeSpan.FromMilliseconds(900)) { EasingFunction = Out });
+            double gl = playing ? GlowPlaying : GlowPaused;
+            glow.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(Math.Min(1, gl + 0.3), gl, TimeSpan.FromMilliseconds(900)) { EasingFunction = Out });
             lastSource = Art.Source;
         }
 
@@ -181,13 +195,13 @@ namespace DynamicIsland
             var target = (button as Border)?.Child as FrameworkElement ?? button;
             var tt = target.RenderTransform as TranslateTransform;
             if (tt == null || tt.IsFrozen) { tt = new TranslateTransform(); target.RenderTransform = tt; }
-            var a = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(460) };
-            a.KeyFrames.Add(new EasingDoubleKeyFrame(dir * 7, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(90)), Out));
-            a.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(460)), new SpringEase { Damping = 0.5 }));
+            var a = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(420) };
+            a.KeyFrames.Add(new EasingDoubleKeyFrame(dir * 6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(90)), Out));
+            a.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420)), Smooth));
             tt.BeginAnimation(TranslateTransform.XProperty, a);
         }
 
-        /// <summary>Kleine Island beim Songwechsel: Cover federt auf, Titel rollt von unten herein.</summary>
+        /// <summary>Kleine Island beim Songwechsel: Cover dreht sich weich ein, Titel rollt von unten herein.</summary>
         public static void CompactChange(FrameworkElement art, FrameworkElement title)
         {
             if (Ui.ReduceMotion) return;
@@ -195,24 +209,87 @@ namespace DynamicIsland
             {
                 var st = art.RenderTransform as ScaleTransform;
                 if (st == null || st.IsFrozen) { st = new ScaleTransform(1, 1); art.RenderTransform = st; art.RenderTransformOrigin = new Point(0.5, 0.5); }
-                var p = new DoubleAnimation(0.55, 1, TimeSpan.FromMilliseconds(560)) { EasingFunction = new SpringEase { Damping = 0.5 } };
+                var p = new DoubleAnimation(0.7, 1, TimeSpan.FromMilliseconds(480)) { EasingFunction = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut } };
                 st.BeginAnimation(ScaleTransform.ScaleXProperty, p);
                 st.BeginAnimation(ScaleTransform.ScaleYProperty, p);
-                art.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.2, 1, TimeSpan.FromMilliseconds(320)));
+                art.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.2, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = Out });
             }
             if (title != null)
             {
                 var tt = title.RenderTransform as TranslateTransform;
                 if (tt == null || tt.IsFrozen) { tt = new TranslateTransform(); title.RenderTransform = tt; }
-                tt.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(12, 0, TimeSpan.FromMilliseconds(460)) { EasingFunction = new SpringEase { Damping = 0.7 } });
-                title.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(360)) { EasingFunction = Out });
+                tt.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = Smooth });
+                title.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(320)) { EasingFunction = Out });
             }
         }
 
-        /// <summary>Jeden Takt: Songwechsel, Play/Pause und Farbe animieren.</summary>
+        // ---------- Play/Pause-Symbol: schrumpft, wechselt, federt zurück ----------
+        bool iconMorph;
+        string iconWant;
+
+        void SetIcon(TextBlock icon, bool playing, bool animate)
+        {
+            if (icon == null) return;
+            iconWant = playing ? PauseGlyph : PlayGlyph;
+            if (iconMorph) return;                 // läuft gerade – der Abschluss setzt das gewünschte Symbol
+            if (icon.Text == iconWant) return;
+            var st = icon.RenderTransform as ScaleTransform;
+            if (st == null || st.IsFrozen) { st = new ScaleTransform(1, 1); icon.RenderTransform = st; icon.RenderTransformOrigin = new Point(0.5, 0.5); }
+            if (!animate || icon.Text.Length == 0)
+            {
+                st.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                st.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                icon.BeginAnimation(UIElement.OpacityProperty, null);
+                st.ScaleX = st.ScaleY = 1; icon.Opacity = 1;
+                icon.Text = iconWant;
+                return;
+            }
+            iconMorph = true;
+            var down = new DoubleAnimation(0.4, TimeSpan.FromMilliseconds(110)) { EasingFunction = In };
+            down.Completed += (s, e) =>
+            {
+                icon.Text = iconWant;
+                var up = new DoubleAnimation(0.4, 1, TimeSpan.FromMilliseconds(380)) { EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut } };
+                up.Completed += (s2, e2) => iconMorph = false;
+                st.BeginAnimation(ScaleTransform.ScaleXProperty, up);
+                st.BeginAnimation(ScaleTransform.ScaleYProperty, up);
+                icon.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(200)));
+            };
+            st.BeginAnimation(ScaleTransform.ScaleXProperty, down);
+            st.BeginAnimation(ScaleTransform.ScaleYProperty, down);
+            icon.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.25, TimeSpan.FromMilliseconds(110)));
+        }
+
+        // ---------- Leuchten atmet nur, während Musik läuft ----------
+        bool breathing;
+        void Breathe(bool on)
+        {
+            if (Ui.ReduceMotion) on = false;
+            if (on == breathing) return;
+            breathing = on;
+            if (on)
+            {
+                var a = new DoubleAnimation(0.95, 1.07, TimeSpan.FromSeconds(2.8)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } };
+                glowScale.BeginAnimation(ScaleTransform.ScaleXProperty, a);
+                glowScale.BeginAnimation(ScaleTransform.ScaleYProperty, a);
+            }
+            else
+            {
+                // pausiert: ruhig auf 1 zurück und dann stehen bleiben (spart Rechenzeit – das Leuchten ist weichgezeichnet)
+                var a = new DoubleAnimation(1, TimeSpan.FromMilliseconds(600)) { EasingFunction = Out, FillBehavior = FillBehavior.Stop };
+                a.Completed += (s, e) => { if (!breathing) { glowScale.ScaleX = glowScale.ScaleY = 1; } };
+                glowScale.ScaleX = glowScale.ScaleY = 1;
+                glowScale.BeginAnimation(ScaleTransform.ScaleXProperty, a);
+                glowScale.BeginAnimation(ScaleTransform.ScaleYProperty, a);
+            }
+        }
+
+        /// <summary>Jeden Takt: Songwechsel, Play/Pause, Symbol und Farbe animieren.</summary>
         public void Animate(string trackKey, bool playing, Color accent, TextBlock playIcon)
         {
             bool motion = !Ui.ReduceMotion;
+            if (TestToggle) { TestToggle = false; testUntil = DateTime.Now.AddSeconds(2.5); }
+            if (DateTime.Now < testUntil) playing = !playing;   // Vorführung: kurz den anderen Zustand zeigen
             if (accent != shownColor)
             {
                 bool firstColor = shownColor == default;
@@ -229,9 +306,8 @@ namespace DynamicIsland
                 Hint(TestChange); TestChange = 0;
                 lastSource = Art.Source;
                 if (motion) { SongChange(playing); waitArt = false; SlideCover(playing); }
-                return;
             }
-            if (trackKey != shownKey)
+            else if (trackKey != shownKey)
             {
                 bool first = shownKey == null;
                 shownKey = trackKey;
@@ -244,34 +320,42 @@ namespace DynamicIsland
                 else if ((DateTime.Now - waitSince).TotalSeconds > 3) waitArt = false;
             }
             else lastSource = Art.Source;   // für den nächsten Wechsel: dieses Cover gleitet dann hinaus
+
+            bool firstState = shownPlaying == null;
+            SetIcon(playIcon, playing, motion && !firstState);
             if (shownPlaying != playing)
             {
-                bool first = shownPlaying == null;
                 shownPlaying = playing;
-                double to = playing ? 1 : 0.88;      // pausiert: Cover etwas kleiner, Leuchten schwächer
-                if (first || !motion)
+                Breathe(playing);
+                double to = playing ? 1 : PausedScale;      // pausiert: Cover etwas kleiner, Leuchten und Schatten schwächer
+                double gl = playing ? GlowPlaying : GlowPaused;
+                if (firstState || !motion)
                 {
                     artScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
                     artScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
                     artScale.ScaleX = artScale.ScaleY = to;
-                    glow.Opacity = playing ? 0.75 : 0.3;
+                    glow.BeginAnimation(UIElement.OpacityProperty, null);
+                    glow.Opacity = gl;
+                    shadow.Opacity = playing ? 0.55 : 0.3;
+                    shadow.BlurRadius = playing ? 20 : 12;
+                    shadow.ShadowDepth = playing ? 5 : 2;
                 }
                 else
                 {
-                    var a = new DoubleAnimation(to, TimeSpan.FromMilliseconds(560)) { EasingFunction = new SpringEase { Damping = playing ? 0.62 : 0.9 } };
+                    // Play: federt groß (leichtes Überschwingen). Pause: sinkt ruhig zusammen.
+                    IEasingFunction ease = playing ? new BackEase { Amplitude = 0.45, EasingMode = EasingMode.EaseOut } : Smooth;
+                    var a = new DoubleAnimation(to, TimeSpan.FromMilliseconds(playing ? 520 : 460)) { EasingFunction = ease };
                     artScale.BeginAnimation(ScaleTransform.ScaleXProperty, a);
                     artScale.BeginAnimation(ScaleTransform.ScaleYProperty, a);
-                    glow.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(playing ? 0.75 : 0.3, TimeSpan.FromMilliseconds(500)));
-                    if (playIcon != null)
-                    {
-                        var st = playIcon.RenderTransform as ScaleTransform;
-                        if (st == null || st.IsFrozen) { st = new ScaleTransform(1, 1); playIcon.RenderTransform = st; playIcon.RenderTransformOrigin = new Point(0.5, 0.5); }
-                        var p = new DoubleAnimation(0.6, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = new SpringEase { Damping = 0.55 } };
-                        st.BeginAnimation(ScaleTransform.ScaleXProperty, p);
-                        st.BeginAnimation(ScaleTransform.ScaleYProperty, p);
-                    }
+                    glow.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(gl, TimeSpan.FromMilliseconds(500)) { EasingFunction = Out });
+                    var sd = TimeSpan.FromMilliseconds(460);
+                    shadow.BeginAnimation(DropShadowEffect.OpacityProperty, new DoubleAnimation(playing ? 0.55 : 0.3, sd) { EasingFunction = Out });
+                    shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, new DoubleAnimation(playing ? 20 : 12, sd) { EasingFunction = Out });
+                    shadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, new DoubleAnimation(playing ? 5 : 2, sd) { EasingFunction = Out });
                 }
             }
         }
+
+        static DateTime testUntil;
     }
 }

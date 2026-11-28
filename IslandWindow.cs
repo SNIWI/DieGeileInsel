@@ -5621,6 +5621,7 @@ namespace DynamicIsland
             if (path.StartsWith("/test") && q["event"] == "battery") { PreviewBatteryGlow(int.TryParse(q["pct"], out var bp) ? Math.Max(0, Math.Min(100, bp)) : 50); return; }   // Licht nach Akkustand vorführen
             if (path.StartsWith("/test") && q["event"] == "msg") { ShowMessage(q["app"] ?? "WhatsApp", q["title"] ?? "Luca", q["body"] ?? "Kommst du heute noch?", null, null); return; }   // echte Nachricht vorführen (Verlauf, App-Farbe)
             if (path.StartsWith("/test") && q["event"] == "song") { PlayerUi.TestChange = q["dir"] == "-1" ? -1 : 1; return; }   // Songwechsel-Animation im Player vorführen
+            if (path.StartsWith("/test") && q["event"] == "pause") { PlayerUi.TestToggle = true; return; }   // Play/Pause-Animation im offenen Player vorführen (2,5 s)
             if (path.StartsWith("/test") && q["event"] == "usb") { ShowDeviceAlert("usb-in", "", "USB-Stick", "E: · 16,5 GB von 28,9 GB belegt", 0.57, Ui.Accent, null, battery: false, free: "12,4 GB"); return; }   // USB-Stick-Meldung vorführen
             if (path.StartsWith("/test") && q["event"] == "fg")                               // Zurückspringen prüfen: Fenster mit diesem Titel nach vorn holen
             {
